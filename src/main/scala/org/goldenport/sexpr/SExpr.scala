@@ -2,11 +2,11 @@ package org.goldenport.sexpr
 
 /**
  * @since   Sep.  9, 2012
- * @version Sep.  9, 2012
+ * @version Aug.  8, 2013
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
-  def list: Option[List[SExpr]] = None
+  def toList: Option[List[SExpr]] = None
 }
 
 case class SAtom(name: String) extends SExpr 
@@ -20,14 +20,15 @@ case class SString(string: String) extends SExpr
 sealed trait SList extends SExpr
 
 case class SCell(car: SExpr, cdr: SExpr) extends SList {
-  override def list: Option[List[SExpr]] = Some(SExpr.build(this))
+  override def toList: Option[List[SExpr]] = Some(list)
+  def list: List[SExpr] = SExpr.build(this)
 }
 
 case object SNil extends SList
 
 object SExpr {
   def getKeyword[T](expr: SExpr, keyword: String)(implicit pf: PartialFunction[SExpr, T]): Option[T] = {
-    expr.list.flatMap(_.dropWhile(_ match {
+    expr.toList.flatMap(_.dropWhile(_ match {
         case k: SKeyword if k.name == keyword => false
         case _ => true
       }) match {
@@ -80,7 +81,7 @@ object SExpr {
       }
     }
     def apply(s: SExpr): List[SExpr] = {
-      s.list.get
+      s.toList.get
     }
   }
 
@@ -92,7 +93,7 @@ object SExpr {
       }
     }
     def apply(s: SExpr): List[String] = {
-      s.list match {
+      s.toList match {
         case Some(xs) => xs.collect {
           case s: SString => s.string
         }

@@ -7,7 +7,8 @@ import org.junit.runner.RunWith
 
 /*
  * @since   Sep.  9, 2012
- * @version Sep.  9, 2012
+ *  version Sep.  9, 2012
+ * @version Aug.  8, 2013
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -18,7 +19,7 @@ class SExprSpec extends WordSpec with ShouldMatchers {
     "list" that {
       "dropWhile" in {
         var s = SExprParser("(:k 100)")
-        val r = s.get.list.get.dropWhile(_ match {
+        val r = s.get.toList.get.dropWhile(_ match {
           case _: SKeyword => false
           case _ => true
         })

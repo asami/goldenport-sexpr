@@ -7,7 +7,7 @@ import org.junit.runner.RunWith
 
 /*
  * @since   Sep.  9, 2012
- * @version Sep.  9, 2012
+ * @version Aug.  8, 2013
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -29,6 +29,15 @@ class SExprParserSpec extends WordSpec with ShouldMatchers {
       "simple list" in {
         val s = SExprParser("(abc)")
         s.get should be (SCell(SAtom("abc"), SNil))
+      }
+    }
+  }
+
+  "Comma Separated SExpr" should {
+    "parse" that {
+      "simple list" in {
+        val s = SExprParser("(abc,xyz)")
+        s.get should be (SCell(SAtom("abc"), SCell(SAtom("xyz"), SNil)))
       }
     }
   }
