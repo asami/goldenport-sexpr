@@ -2,7 +2,7 @@ package org.goldenport.sexpr
 
 /**
  * @since   Sep.  9, 2012
- * @version Aug.  8, 2013
+ * @version Aug.  9, 2013
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -18,6 +18,18 @@ case class SNumber(number: String) extends SExpr
 case class SString(string: String) extends SExpr
 
 case class SBoolean(value: Boolean) extends SExpr
+
+object SBoolean {
+  val TRUE = SBoolean(true)
+  val FALSE = SBoolean(false)
+
+  def isTrue(s: SExpr): Boolean = {
+    s match {
+      case SBoolean(false) => false
+      case _ => true
+    }
+  }
+}
 
 sealed trait SList extends SExpr {
   def list: List[SExpr] = Nil

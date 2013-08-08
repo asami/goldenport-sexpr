@@ -1,14 +1,21 @@
 package org.goldenport.sexpr.eval
 
+import scala.collection.mutable.{
+  Stack, HashMap
+}
 import org.goldenport.sexpr._
 
 /*
  * @since   Aug.  8, 2013
- * @version Aug.  8, 2013
+ * @version Aug.  9, 2013
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
-  def binding: Binding
+  private val _stack = new Stack[Binding]
+
+  protected def init_binding(binding: Binding) {
+    _stack.push(binding)
+  }
 
   def eval(in: CharSequence): SExpr = {
     SExprParser(in)
@@ -26,7 +33,11 @@ trait Evaluator {
   }
 
   protected def eval_atom(atom: SAtom): SExpr = {
-    binding.get(atom)
+    if (_stack.isEmpty) throw new IllegalStateException("Stack should be pushed init binding.")
+    _stack.toStream.flatMap(_.get(atom)).headOption match {
+      case Some(s) => s
+      case None => sys.error("???")
+    }
   }
 
   protected def eval_keyword(keyword: SKeyword): SExpr = {
@@ -50,7 +61,10 @@ trait Evaluator {
     b.head match {
       case atom: SAtom => {
         val c = b.tail.map(eval)
-        binding.function(atom)(c)
+        _stack.toStream.flatMap(_.function(atom)).headOption match {
+          case Some(f) => f(c)
+          case None => sys.error("???")
+        }
       }
       case _ => sys.error("???")
     }
@@ -58,6 +72,13 @@ trait Evaluator {
 }
 
 trait Binding {
-  def get(atom: SAtom): SExpr
-  def function(atom: SAtom)(xs: List[SExpr]): SExpr
+  val binds = new HashMap[String, SExpr]
+
+  def get(atom: SAtom): Option[SExpr] = {
+    binds.get(atom.name) orElse get_Application(atom.name)
+  }
+
+  protected def get_Application(name: String): Option[SExpr] = None
+
+  def function(atom: SAtom): Option[List[SExpr] => SExpr]
 }
