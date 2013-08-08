@@ -16,19 +16,19 @@ class SExprParserSpec extends WordSpec with ShouldMatchers {
     "parse" that {
       "empty parenthes" in {
         val s = SExprParser("()")
-        s.get should equal (SNil)
+        s should equal (SNil)
       }
       "empty parenthes with space" in {
         val s = SExprParser("( )")
-        s.get should be (SNil)
+        s should be (SNil)
       }
       "nil" in {
         val s = SExprParser("nil")
-        s.get should be (SNil)
+        s should be (SNil)
       }
       "simple list" in {
         val s = SExprParser("(abc)")
-        s.get should be (SCell(SAtom("abc"), SNil))
+        s should be (SCell(SAtom("abc"), SNil))
       }
     }
   }
@@ -37,7 +37,7 @@ class SExprParserSpec extends WordSpec with ShouldMatchers {
     "parse" that {
       "simple list" in {
         val s = SExprParser("(abc,xyz)")
-        s.get should be (SCell(SAtom("abc"), SCell(SAtom("xyz"), SNil)))
+        s should be (SCell(SAtom("abc"), SCell(SAtom("xyz"), SNil)))
       }
     }
   }

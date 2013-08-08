@@ -17,11 +17,13 @@ case class SNumber(number: String) extends SExpr
 
 case class SString(string: String) extends SExpr
 
-sealed trait SList extends SExpr
+sealed trait SList extends SExpr {
+  def list: List[SExpr] = Nil
+}
 
 case class SCell(car: SExpr, cdr: SExpr) extends SList {
   override def toList: Option[List[SExpr]] = Some(list)
-  def list: List[SExpr] = SExpr.build(this)
+  override def list: List[SExpr] = SExpr.build(this)
 }
 
 case object SNil extends SList

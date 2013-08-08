@@ -19,7 +19,7 @@ class SExprSpec extends WordSpec with ShouldMatchers {
     "list" that {
       "dropWhile" in {
         var s = SExprParser("(:k 100)")
-        val r = s.get.toList.get.dropWhile(_ match {
+        val r = s.toList.get.dropWhile(_ match {
           case _: SKeyword => false
           case _ => true
         })
@@ -29,17 +29,17 @@ class SExprSpec extends WordSpec with ShouldMatchers {
     "keyword" that {
       "string" in {
         var s = SExprParser("""(:k "value")""")
-        var v = SExpr.getKeyword[String](s.get, "k")
+        var v = SExpr.getKeyword[String](s, "k")
         v should equal (Some("value"))
       }
       "string list" in {
         var s = SExprParser("""(:k ("value"))""")
-        var v = SExpr.getKeyword[List[String]](s.get, "k")
+        var v = SExpr.getKeyword[List[String]](s, "k")
         v should equal (Some(List("value")))
       }
       "strings list" in {
         var s = SExprParser("""(:k ("value1" "value2"))""")
-        var v = SExpr.getKeyword[List[String]](s.get, "k")
+        var v = SExpr.getKeyword[List[String]](s, "k")
         v should equal (Some(List("value1", "value2")))
       }
     }

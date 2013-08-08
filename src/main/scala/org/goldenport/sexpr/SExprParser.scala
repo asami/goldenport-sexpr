@@ -10,8 +10,16 @@ import scala.util.parsing.combinator.JavaTokenParsers
  */
 object SExprParser extends JavaTokenParsers {
   override protected val whiteSpace = """[\s,]+""".r
-  def apply(reader: Reader) = parseAll(sexpr, reader)
-  def apply(in: CharSequence) = parseAll(sexpr, in)
+  def apply(reader: Reader): SExpr = {
+    parseAll(sexpr, reader) match {
+      case Success(s, _) => s
+    }
+  }
+  def apply(in: CharSequence) = {
+    parseAll(sexpr, in) match {
+      case Success(s, _) => s
+    }
+  }
 
   def sexpr: Parser[SExpr] = nil | list | number | string | keyword | atom
 
