@@ -21,7 +21,7 @@ object SExprParser extends JavaTokenParsers {
     }
   }
 
-  def sexpr: Parser[SExpr] = nil | list | number | string | keyword | atom
+  def sexpr: Parser[SExpr] = nil | list | number | boolean | string | keyword | atom
 
   def symbol: Parser[String] = """[\w-]+""".r
 
@@ -40,6 +40,18 @@ object SExprParser extends JavaTokenParsers {
   def number: Parser[SNumber] = {
     wholeNumber ^^ {
       case number => SNumber(number)
+    }
+  }
+
+  def boolean: Parser[SBoolean] = boolean_true | boolean_false
+  def boolean_true: Parser[SBoolean] = {
+    "true" ^^ {
+      case s => SBoolean(true)
+    }
+  }
+  def boolean_false: Parser[SBoolean] = {
+    "false" ^^ {
+      case s => SBoolean(false)
     }
   }
 

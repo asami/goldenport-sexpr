@@ -17,6 +17,8 @@ case class SNumber(number: String) extends SExpr
 
 case class SString(string: String) extends SExpr
 
+case class SBoolean(value: Boolean) extends SExpr
+
 sealed trait SList extends SExpr {
   def list: List[SExpr] = Nil
 }

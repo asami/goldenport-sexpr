@@ -19,6 +19,7 @@ trait Evaluator {
       case atom: SAtom => eval_atom(atom)
       case keyword: SKeyword => eval_keyword(keyword)
       case num: SNumber => eval_number(num)
+      case b: SBoolean => eval_boolean(b)
       case s: SString => eval_string(s)
       case xs: SList => eval_list(xs)
     }
@@ -34,6 +35,10 @@ trait Evaluator {
 
   protected def eval_number(num: SNumber): SExpr = {
     num
+  }
+
+  protected def eval_boolean(b: SBoolean): SExpr = {
+    b
   }
 
   protected def eval_string(s: SString): SExpr = {
