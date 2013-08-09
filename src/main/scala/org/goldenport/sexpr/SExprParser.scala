@@ -5,7 +5,7 @@ import scala.util.parsing.combinator.JavaTokenParsers
 
 /**
  * @since   Sep.  9, 2012
- * @version Aug.  8, 2013
+ * @version Aug.  9, 2013
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -23,7 +23,7 @@ object SExprParser extends JavaTokenParsers {
 
   def sexpr: Parser[SExpr] = nil | list | number | boolean | string | keyword | atom
 
-  def symbol: Parser[String] = """[\w-]+""".r
+  def symbol: Parser[String] = """([\w-.]|[^\x01-\x7E])+""".r
 
   def atom: Parser[SAtom] = {
     symbol ^^ {
