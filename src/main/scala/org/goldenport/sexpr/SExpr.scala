@@ -2,22 +2,32 @@ package org.goldenport.sexpr
 
 /**
  * @since   Sep.  9, 2012
- * @version Aug.  9, 2013
+ * @version Aug. 21, 2013
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
   def toList: Option[List[SExpr]] = None
 }
 
-case class SAtom(name: String) extends SExpr 
+case class SAtom(name: String) extends SExpr {
+  override def toString() = name
+}
 
-case class SKeyword(name: String) extends SExpr
+case class SKeyword(name: String) extends SExpr {
+  override def toString() = ":" + name
+}
 
-case class SNumber(number: String) extends SExpr
+case class SNumber(number: String) extends SExpr {
+  override def toString() = number.toString
+}
 
-case class SString(string: String) extends SExpr
+case class SString(string: String) extends SExpr {
+  override def toString() = '"' + string + '"'
+}
 
-case class SBoolean(value: Boolean) extends SExpr
+case class SBoolean(value: Boolean) extends SExpr {
+  override def toString() = value.toString
+}
 
 object SBoolean {
   val TRUE = SBoolean(true)
