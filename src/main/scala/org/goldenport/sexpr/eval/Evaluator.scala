@@ -7,7 +7,7 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Aug.  8, 2013
- * @version Aug.  9, 2013
+ * @version Dec.  9, 2013
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -18,10 +18,11 @@ trait Evaluator {
   }
 
   def eval(in: CharSequence): SExpr = {
-    SExprParser(in)
+    eval(SExprParser(in))
   }
 
   def eval(expr: SExpr): SExpr = {
+    // println("Evaluator#expr = " + expr)
     expr match {
       case atom: SAtom => eval_atom(atom)
       case keyword: SKeyword => eval_keyword(keyword)
