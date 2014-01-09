@@ -16,7 +16,7 @@ trait SExprParsers extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case SAtom(name) => Success(name, in.rest)
-        case _ => Failure("not atom", in.rest)
+        case x => Failure("not atom = " + x, in.rest)
       }
     }
   }
@@ -26,16 +26,34 @@ trait SExprParsers extends Parsers {
       val NAME = name
       in.first match {
         case x @ SAtom(NAME) => Success(x, in.rest)
-        case _ => Failure("not atom", in.rest)
+        case x => Failure("not atom = " + x, in.rest)
       }
     }
   }
 
-  def str: Parser[String] = new Parser[String] {
+  def string: Parser[String] = new Parser[String] {
     def apply(in: Input) = {
       in.first match {
         case SString(s) => Success(s, in.rest)
-        case _ => Failure("not atom", in.rest)
+        case x => Failure("not string = " + x, in.rest)
+      }
+    }
+  }
+
+  def open = new Parser[SPseudo] {
+    def apply(in: Input) = {
+      in.first match {
+        case SOpen => Success(SOpen, in.rest)
+        case _ => Failure("not open", in.rest)
+      }
+    }
+  }
+
+  def close = new Parser[SPseudo] {
+    def apply(in: Input) = {
+      in.first match {
+        case SClose => Success(SClose, in.rest)
+        case _ => Failure("not close", in.rest)
       }
     }
   }
