@@ -2,7 +2,8 @@ package org.goldenport.sexpr
 
 /**
  * @since   Sep.  9, 2012
- * @version Aug. 21, 2013
+ *  version Aug. 21, 2013
+ * @version Jan.  9, 2014
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -51,6 +52,11 @@ case class SCell(car: SExpr, cdr: SExpr) extends SList {
 }
 
 case object SNil extends SList
+
+trait SPseudo extends SExpr
+
+case object SOpen extends SPseudo // List Open
+case object SClose extends SPseudo // List Close
 
 object SExpr {
   def getKeyword[T](expr: SExpr, keyword: String)(implicit pf: PartialFunction[SExpr, T]): Option[T] = {
