@@ -6,7 +6,7 @@ import scala.util.parsing.input._
 
 /*
  * @since   Jan.  9, 2014
- * @version Jan. 10, 2014
+ * @version Jan. 20, 2014
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -27,6 +27,15 @@ trait SExprParsers extends Parsers {
       in.first match {
         case x @ SAtom(NAME) => Success(x, in.rest)
         case x => Failure("not atom = " + x, in.rest)
+      }
+    }
+  }
+
+  protected def boolean: Parser[Boolean] = new Parser[Boolean] {
+    def apply(in: Input) = {
+      in.first match {
+        case SBoolean(s) => Success(s, in.rest)
+        case x => Failure("not string = " + x, in.rest)
       }
     }
   }
@@ -69,6 +78,11 @@ trait SExprParsers extends Parsers {
         case _ => Failure("not close", in.rest)
       }
     }
+  }
+
+  protected def atom_boolean(name: String): Parser[Boolean] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> boolean <~ close
   }
 
   protected def atom_string(name: String): Parser[String] = {
