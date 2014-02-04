@@ -7,7 +7,7 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Aug.  9, 2013
- * @version Aug.  9, 2013
+ * @version Feb.  4, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Translator[T] {
@@ -19,6 +19,7 @@ trait Translator[T] {
       case b: SBoolean => trans_boolean(b)
       case s: SString => trans_string(s)
       case xs: SList => trans_list(xs)
+      case p: SPseudo => trans_pseudo(p)
     }
   }
 
@@ -40,6 +41,7 @@ trait Translator[T] {
       case _ => sys.error("???")
     }
   }
+  protected def trans_pseudo(p: SPseudo): T = ???
 
   protected def pf: PartialFunction[String, List[T] => T]
 }
