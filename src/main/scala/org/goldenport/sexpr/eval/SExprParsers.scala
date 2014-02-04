@@ -1,12 +1,13 @@
 package org.goldenport.sexpr.eval
 
-import org.goldenport.sexpr._
+import scala.util.control.NonFatal
 import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input._
+import org.goldenport.sexpr._
 
 /*
  * @since   Jan.  9, 2014
- * @version Jan. 20, 2014
+ * @version Mar.  4, 2014
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -55,7 +56,7 @@ trait SExprParsers extends Parsers {
         case SNumber(s) => try {
           Success(s.toLong, in.rest)
         } catch {
-          case e => Failure("not long = " + e, in.rest)
+          case NonFatal(e) => Failure("not long = " + e, in.rest)
         }
         case x => Failure("not number = " + x, in.rest)
       }
