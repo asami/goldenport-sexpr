@@ -89,6 +89,7 @@ trait Evaluator {
       case _ => sys.error("???")
     }
   }
+<<<<<<< HEAD
 */
 
   protected def eval_to_context(expr: SExpr): EvalContext = {
@@ -141,6 +142,10 @@ trait Evaluator {
   protected def create_Eval_Context(xs: List[SExpr]): EvalContext
 
   protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
+
+  protected def eval_pseudo(pseudo: SPseudo): SExpr = {
+    sys.error("???")
+  }
 }
 
 trait Binding {
