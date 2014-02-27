@@ -4,16 +4,23 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Aug.  8, 2013
- * @version Aug.  9, 2013
+ * @version Feb. 27, 2014
  * @author  ASAMI, Tomoharu
  */
 class LispEvaluator extends Evaluator {
   init_binding(new LispBinding)
+
+  protected def create_Eval_Context(x: SExpr): EvalContext = sys.error("???")
+
+  protected def create_Eval_Context(xs: List[SExpr]): EvalContext = sys.error("???")
+
+  protected def reduction_Context(xs: Seq[EvalContext]): EvalContext = sys.error("???")
 }
 
 class LispBinding extends Binding {
-  def function(atom: SAtom): Option[List[SExpr] => SExpr] = {
-    pf.lift(atom.name)
+  def function(atom: SAtom): Option[EvalContext => EvalContext] = {
+//    pf.lift(atom.name)
+    sys.error("???")
   }
 
   def pf: PartialFunction[String, List[SExpr] => SExpr] = {

@@ -7,7 +7,8 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Aug.  8, 2013
- * @version Dec.  9, 2013
+ *  version Dec.  9, 2013
+ * @version Feb. 27, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -58,6 +59,11 @@ trait Evaluator {
   }
 
   protected def eval_list(xs: SList): SExpr = {
+    eval_list_to_context(xs).value
+  }
+
+/*
+  protected def eval_list(xs: SList): SExpr = {
     val b = xs.list
     b.head match {
       case atom: SAtom => {
@@ -70,16 +76,68 @@ trait Evaluator {
       case _ => sys.error("???")
     }
   }
+*/
+
+  protected def eval_to_context(expr: SExpr): EvalContext = {
+    expr match {
+      case atom: SAtom => eval_atom_to_context(atom)
+      case keyword: SKeyword => eval_keyword_to_context(keyword)
+      case num: SNumber => eval_number_to_context(num)
+      case b: SBoolean => eval_boolean_to_context(b)
+      case s: SString => eval_string_to_context(s)
+      case xs: SList => eval_list_to_context(xs)
+    }
+  }
+
+  protected def eval_atom_to_context(atom: SAtom): EvalContext = {
+    create_Eval_Context(eval_atom(atom))
+  }
+
+  protected def eval_keyword_to_context(keyword: SKeyword): EvalContext = {
+    create_Eval_Context(eval_keyword(keyword))
+  }
+
+  protected def eval_number_to_context(number: SNumber): EvalContext = {
+    create_Eval_Context(eval_number(number))
+  }
+
+  protected def eval_boolean_to_context(boolean: SBoolean): EvalContext = {
+    create_Eval_Context(eval_boolean(boolean))
+  }
+
+  protected def eval_string_to_context(string: SString): EvalContext = {
+    create_Eval_Context(eval_string(string))
+  }
+
+  protected def eval_list_to_context(list: SList): EvalContext = {
+    val b = list.list
+    b.head match {
+      case atom: SAtom => {
+        val cs = b.tail.map(eval_to_context)
+        _stack.toStream.flatMap(_.function(atom)).headOption match {
+          case Some(f) => f(reduction_Context(cs))
+          case None => sys.error("???")
+        }
+      }
+      case _ => sys.error("???")
+    }
+  }
+
+  protected def create_Eval_Context(x: SExpr): EvalContext
+
+  protected def create_Eval_Context(xs: List[SExpr]): EvalContext
+
+  protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
 }
 
 trait Binding {
   val binds = new HashMap[String, SExpr]
 
   def get(atom: SAtom): Option[SExpr] = {
-    binds.get(atom.name) orElse get_Application(atom.name)
+    binds.get(atom.name) orElse eval_Atom(atom.name)
   }
 
-  protected def get_Application(name: String): Option[SExpr] = None
+  protected def eval_Atom(name: String): Option[SExpr] = None
 
-  def function(atom: SAtom): Option[List[SExpr] => SExpr]
+  def function(atom: SAtom): Option[EvalContext => EvalContext]
 }

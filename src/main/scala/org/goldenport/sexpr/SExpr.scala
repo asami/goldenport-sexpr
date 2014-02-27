@@ -3,7 +3,8 @@ package org.goldenport.sexpr
 /**
  * @since   Sep.  9, 2012
  *  version Aug. 21, 2013
- * @version Jan.  9, 2014
+ *  version Jan.  9, 2014
+ * @version Feb. 27, 2014
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -44,6 +45,14 @@ object SBoolean {
 
 sealed trait SList extends SExpr {
   def list: List[SExpr] = Nil
+}
+
+object SList {
+  def create(xs: Seq[SExpr]): SList = {
+    xs.foldRight(SNil: SList) { (x, z) =>
+      SCell(x, z)
+    }
+  }
 }
 
 case class SCell(car: SExpr, cdr: SExpr) extends SList {
