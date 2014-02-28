@@ -8,7 +8,7 @@ import org.goldenport.sexpr._
 /*
  * @since   Aug.  8, 2013
  *  version Dec.  9, 2013
- * @version Feb. 27, 2014
+ * @version Feb. 28, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -38,7 +38,13 @@ trait Evaluator {
     if (_stack.isEmpty) throw new IllegalStateException("Stack should be pushed init binding.")
     _stack.toStream.flatMap(_.get(atom)).headOption match {
       case Some(s) => s
-      case None => sys.error("???")
+      case None => {
+        val cs = Vector(create_Eval_Context(Nil))
+        _stack.toStream.flatMap(_.function(atom)).headOption match {
+          case Some(f) => f(reduction_Context(cs)).value
+          case None => sys.error("???")
+        }
+      }
     }
   }
 
