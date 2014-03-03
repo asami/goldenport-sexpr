@@ -8,7 +8,7 @@ import org.goldenport.sexpr._
 /*
  * @since   Aug.  8, 2013
  *  version Dec.  9, 2013
- * @version Mar.  4, 2014
+ *  version Feb. 28, 2014
  * @version Mar.  4, 2014
  * @author  ASAMI, Tomoharu
  */
@@ -94,6 +94,7 @@ trait Evaluator {
       case b: SBoolean => eval_boolean_to_context(b)
       case s: SString => eval_string_to_context(s)
       case xs: SList => eval_list_to_context(xs)
+      case p: SPseudo => eval_pseudo_to_context(p)
     }
   }
 
@@ -117,6 +118,10 @@ trait Evaluator {
     create_Eval_Context(eval_string(string))
   }
 
+  protected def eval_pseudo_to_context(pseuedo: SPseudo): EvalContext = {
+    create_Eval_Context(eval_pseudo(pseuedo))
+  }
+
   protected def eval_list_to_context(list: SList): EvalContext = {
     val b = list.list
     b.head match {
@@ -136,8 +141,6 @@ trait Evaluator {
   protected def create_Eval_Context(xs: List[SExpr]): EvalContext
 
   protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
-=======
->>>>>>> 7b35d75d91a421b4f5aa17f635cc9cefe2860f7c
 
   protected def eval_pseudo(pseudo: SPseudo): SExpr = {
     sys.error("???")
