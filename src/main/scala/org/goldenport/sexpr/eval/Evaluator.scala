@@ -89,7 +89,6 @@ trait Evaluator {
       case _ => sys.error("???")
     }
   }
-<<<<<<< HEAD
 */
 
   protected def eval_to_context(expr: SExpr): EvalContext = {
@@ -100,6 +99,7 @@ trait Evaluator {
       case b: SBoolean => eval_boolean_to_context(b)
       case s: SString => eval_string_to_context(s)
       case xs: SList => eval_list_to_context(xs)
+      case p: SPseudo => eval_pseudo_to_context(p)
     }
   }
 
@@ -121,6 +121,10 @@ trait Evaluator {
 
   protected def eval_string_to_context(string: SString): EvalContext = {
     create_Eval_Context(eval_string(string))
+  }
+
+  protected def eval_pseudo_to_context(pseuedo: SPseudo): EvalContext = {
+    create_Eval_Context(eval_pseudo(pseuedo))
   }
 
   protected def eval_list_to_context(list: SList): EvalContext = {

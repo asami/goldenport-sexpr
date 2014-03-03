@@ -1,18 +1,18 @@
 package org.goldenport.sexpr.eval
 
 import org.scalatest.{WordSpec, GivenWhenThen}
-import org.scalatest.matchers.ShouldMatchers
+import org.scalatest.Matchers
 import org.scalatest.junit.JUnitRunner
 import org.junit.runner.RunWith
 import org.goldenport.sexpr._
 
 /*
  * @since   Jan.  9, 2014
- * @version Jan.  9, 2014
+ * @version Mar.  4, 2014
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
-class SExprReaderSpec extends WordSpec with ShouldMatchers with GivenWhenThen {
+class SExprReaderSpec extends WordSpec with Matchers with GivenWhenThen {
   "SExprReader" should {
     "nil" in {
       val expr = SExprParser.apply("nil")
