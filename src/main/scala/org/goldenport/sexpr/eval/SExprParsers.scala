@@ -8,6 +8,7 @@ import org.goldenport.sexpr._
 /*
  * @since   Jan.  9, 2014
  * @version Mar.  4, 2014
+ * @version Mar.  4, 2014
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {

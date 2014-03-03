@@ -9,6 +9,7 @@ import org.goldenport.sexpr._
  * @since   Aug.  8, 2013
  *  version Dec.  9, 2013
  * @version Mar.  4, 2014
+ * @version Mar.  4, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -83,7 +84,6 @@ trait Evaluator {
       case _ => sys.error("???")
     }
   }
-<<<<<<< HEAD
 */
 
   protected def eval_to_context(expr: SExpr): EvalContext = {
@@ -136,6 +136,8 @@ trait Evaluator {
   protected def create_Eval_Context(xs: List[SExpr]): EvalContext
 
   protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
+=======
+>>>>>>> 7b35d75d91a421b4f5aa17f635cc9cefe2860f7c
 
   protected def eval_pseudo(pseudo: SPseudo): SExpr = {
     sys.error("???")
