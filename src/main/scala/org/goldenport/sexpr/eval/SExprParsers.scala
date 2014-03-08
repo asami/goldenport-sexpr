@@ -6,7 +6,7 @@ import scala.util.parsing.input._
 
 /*
  * @since   Jan.  9, 2014
- * @version Jan. 20, 2014
+ * @version Mar.  9, 2014
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -26,7 +26,7 @@ trait SExprParsers extends Parsers {
       val NAME = name
       in.first match {
         case x @ SAtom(NAME) => Success(x, in.rest)
-        case x => Failure("not atom = " + x, in.rest)
+        case x => Failure("not atom %s = %s".format(name, x), in.rest)
       }
     }
   }
@@ -104,6 +104,74 @@ trait SExprParsers extends Parsers {
     // XXX handle keywords
     open ~ atom(name) ~> expr_list <~ close ^^ {
       case exprs => exprs
+    }
+  }
+
+  def keyword(name: String): Parser[SKeyword] = new Parser[SKeyword] {
+    def apply(in: Input) = {
+      val NAME = name
+      in.first match {
+        case x @ SKeyword(NAME) => Success(x, in.rest)
+        case x => Failure("not keyword %s = %s".format(name, x), in.rest)
+      }
+    }
+  }
+
+  def keyword_boolean(name: String): Parser[Boolean] = {
+    keyword(name) ~> boolean
+  }
+
+  def keyword_long(name: String): Parser[Long] = {
+    keyword(name) ~> number_long
+  }
+
+  def keyword_string(name: String): Parser[String] = {
+    keyword(name) ~> string
+  }
+
+  def keyword_name_boolean(name: String): Parser[(String, Boolean)] = {
+    keyword(name) ~> boolean ^^ {
+      case v => name -> v
+    }
+  }
+
+  def keyword_name_long(name: String): Parser[(String, Long)] = {
+    keyword(name) ~> number_long ^^ {
+      case v => name -> v
+    }
+  }
+
+  def keyword_name_string(name: String): Parser[(String, String)] = {
+    keyword(name) ~> string ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def as_boolean(
+    name: String, params: Seq[(String, Any)],
+    v: Boolean
+  ): Boolean = {
+    get_boolean(name, params) getOrElse v
+  }
+
+  protected def get_boolean(name: String, params: Seq[(String, Any)]): Option[Boolean] = {
+    params.find(_._1 == name).map {
+      case (_, v: Boolean) => v
+      case (_, v) => throw new IllegalArgumentException("Illegal boolean %s = %s".format(name, v))
+    }
+  }
+
+  protected def get_long(name: String, params: Seq[(String, Any)]): Option[Long] = {
+    params.find(_._1 == name).map {
+      case (_, v: Long) => v
+      case (_, v) => throw new IllegalArgumentException("Illegal long %s = %s".format(name, v))
+    }
+  }
+
+  protected def get_string(name: String, params: Seq[(String, Any)]): Option[String] = {
+    params.find(_._1 == name).map {
+      case (_, v: String) => v
+      case (_, v) => throw new IllegalArgumentException("Illegal string %s = %s".format(name, v))
     }
   }
 
