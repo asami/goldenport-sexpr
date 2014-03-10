@@ -70,7 +70,6 @@ trait Evaluator {
     eval_list_to_context(xs).value
   }
 
-
   protected def eval_pseudo(pseudo: SPseudo): SExpr = {
     sys.error("???")
   }
@@ -146,10 +145,6 @@ trait Evaluator {
   protected def create_Eval_Context(xs: List[SExpr]): EvalContext
 
   protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
-
-  protected def eval_pseudo(pseudo: SPseudo): SExpr = {
-    sys.error("???")
-  }
 }
 
 trait Binding {
