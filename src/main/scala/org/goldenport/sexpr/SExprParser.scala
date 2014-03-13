@@ -7,7 +7,8 @@ import scala.util.parsing.combinator.JavaTokenParsers
  * @since   Sep.  9, 2012
  *  version Aug.  9, 2013
  *  version Oct. 14, 2013
- * @version Feb.  4, 2014
+ *  version Feb.  4, 2014
+ * @version Mar. 13, 2014
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -15,13 +16,13 @@ object SExprParser extends JavaTokenParsers {
   def apply(reader: Reader): SExpr = {
     parseAll(sexpr, reader) match {
       case Success(s, _) => s
-      case _ => ???
+      case _ => throw new IllegalArgumentException("Illega sexpr")
     }
   }
   def apply(in: CharSequence) = {
     parseAll(sexpr, in) match {
       case Success(s, _) => s
-      case _ => ???
+      case _ => throw new IllegalArgumentException("Illega sexpr = $in")
     }
   }
 
