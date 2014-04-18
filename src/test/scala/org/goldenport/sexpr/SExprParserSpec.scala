@@ -8,7 +8,8 @@ import org.junit.runner.RunWith
 /*
  * @since   Sep.  9, 2012
  *  version Aug.  9, 2013
- * @version Feb.  4, 2014
+ *  version Feb.  4, 2014
+ * @version Apr. 18, 2014
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -44,6 +45,13 @@ class SExprParserSpec extends WordSpec with Matchers {
         val s = SExprParser("(abc,xyz)")
         s should be (SCell(SAtom("abc"), SCell(SAtom("xyz"), SNil)))
       }
+    }
+  }
+
+  "Comment" should {
+    "typical" in {
+      val s = SExprParser(";;comment\n(abc,xyz)")
+      s should be (SCell(SAtom("abc"), SCell(SAtom("xyz"), SNil)))
     }
   }
 }
