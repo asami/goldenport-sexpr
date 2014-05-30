@@ -8,7 +8,9 @@ import org.goldenport.sexpr._
 /*
  * @since   Jan.  9, 2014
  *  version Feb.  4, 2014
- * @version Mar. 11, 2014
+ *  version Mar. 11, 2014
+ *  version Apr. 23, 2014
+ * @version May. 25, 2014
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -51,6 +53,43 @@ trait SExprParsers extends Parsers {
     }
   }
 
+  protected def number_byte: Parser[Byte] = new Parser[Byte] {
+    def apply(in: Input) = {
+      in.first match {
+        case SNumber(s) => try {
+          Success(s.toByte, in.rest)
+        } catch {
+          case NonFatal(e) => Failure("not byte = " + e, in.rest)
+        }
+        case x => Failure("not number = " + x, in.rest)
+      }
+    }
+  }
+  protected def number_short: Parser[Short] = new Parser[Short] {
+    def apply(in: Input) = {
+      in.first match {
+        case SNumber(s) => try {
+          Success(s.toShort, in.rest)
+        } catch {
+          case NonFatal(e) => Failure("not short = " + e, in.rest)
+        }
+        case x => Failure("not number = " + x, in.rest)
+      }
+    }
+  }
+  protected def number_int: Parser[Int] = new Parser[Int] {
+    def apply(in: Input) = {
+      in.first match {
+        case SNumber(s) => try {
+          Success(s.toInt, in.rest)
+        } catch {
+          case NonFatal(e) => Failure("not int = " + e, in.rest)
+        }
+        case x => Failure("not number = " + x, in.rest)
+      }
+    }
+  }
+
   protected def number_long: Parser[Long] = new Parser[Long] {
     def apply(in: Input) = {
       in.first match {
@@ -58,6 +97,32 @@ trait SExprParsers extends Parsers {
           Success(s.toLong, in.rest)
         } catch {
           case NonFatal(e) => Failure("not long = " + e, in.rest)
+        }
+        case x => Failure("not number = " + x, in.rest)
+      }
+    }
+  }
+
+  protected def number_float: Parser[Float] = new Parser[Float] {
+    def apply(in: Input) = {
+      in.first match {
+        case SNumber(s) => try {
+          Success(s.toFloat, in.rest)
+        } catch {
+          case NonFatal(e) => Failure("not float = " + e, in.rest)
+        }
+        case x => Failure("not number = " + x, in.rest)
+      }
+    }
+  }
+
+  protected def number_double: Parser[Double] = new Parser[Double] {
+    def apply(in: Input) = {
+      in.first match {
+        case SNumber(s) => try {
+          Success(s.toDouble, in.rest)
+        } catch {
+          case NonFatal(e) => Failure("not double = " + e, in.rest)
         }
         case x => Failure("not number = " + x, in.rest)
       }
@@ -82,9 +147,44 @@ trait SExprParsers extends Parsers {
     }
   }
 
+  protected def atom_atom_name(name: String): Parser[String] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> atom_name <~ close
+  }
+
   protected def atom_boolean(name: String): Parser[Boolean] = {
     // XXX handle keywords
     open ~ atom(name) ~> boolean <~ close
+  }
+
+  protected def atom_byte(name: String): Parser[Byte] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> number_byte <~ close
+  }
+
+  protected def atom_short(name: String): Parser[Short] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> number_short <~ close
+  }
+
+  protected def atom_int(name: String): Parser[Int] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> number_int <~ close
+  }
+
+  protected def atom_long(name: String): Parser[Long] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> number_long <~ close
+  }
+
+  protected def atom_float(name: String): Parser[Float] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> number_float <~ close
+  }
+
+  protected def atom_double(name: String): Parser[Double] = {
+    // XXX handle keywords
+    open ~ atom(name) ~> number_double <~ close
   }
 
   protected def atom_string(name: String): Parser[String] = {
@@ -106,6 +206,72 @@ trait SExprParsers extends Parsers {
     // XXX handle keywords
     open ~ atom(name) ~> expr_list <~ close ^^ {
       case exprs => exprs
+    }
+  }
+
+  protected def atom_name_boolean(name: String): Parser[(String, Boolean)] = {
+    atom_boolean(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_byte(name: String): Parser[(String, Byte)] = {
+    atom_byte(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_short(name: String): Parser[(String, Short)] = {
+    atom_short(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_int(name: String): Parser[(String, Int)] = {
+    atom_int(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_long(name: String): Parser[(String, Long)] = {
+    atom_long(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_float(name: String): Parser[(String, Float)] = {
+    atom_float(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_double(name: String): Parser[(String, Double)] = {
+    atom_double(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_string(name: String): Parser[(String, String)] = {
+    atom_string(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_long_list(name: String): Parser[(String, Seq[Long])] = {
+    atom_long_list(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_string_list(name: String): Parser[(String, Seq[String])] = {
+    atom_string_list(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_expr_list(name: String): Parser[(String, Seq[SExpr])] = {
+    atom_expr_list(name) ^^ {
+      case v => name -> v
     }
   }
 
@@ -170,11 +336,21 @@ trait SExprParsers extends Parsers {
     }
   }
 
+  protected def as_string(name: String, params: Seq[(String, Any)]): String = {
+    get_string(name, params) getOrElse {
+      throw new NoSuchElementException(s"String property $name")
+    }
+  }
+
   protected def get_string(name: String, params: Seq[(String, Any)]): Option[String] = {
     params.find(_._1 == name).map {
       case (_, v: String) => v
       case (_, v) => throw new IllegalArgumentException("Illegal string %s = %s".format(name, v))
     }
+  }
+ 
+  protected def get_string_vector(name: String, params: Seq[(String, Any)]): Vector[String] = {
+    params.filter(_._1 == name).map(_._2.toString).toVector
   }
 
   protected def expr_list = new Parser[Seq[SExpr]] {
