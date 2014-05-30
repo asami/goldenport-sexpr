@@ -4,7 +4,9 @@ package org.goldenport.sexpr
  * @since   Sep.  9, 2012
  *  version Aug. 21, 2013
  *  version Jan.  9, 2014
- * @version Feb. 27, 2014
+ *  version Feb. 27, 2014
+ *  version Apr. 23, 2014
+ * @version May. 25, 2014
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -48,6 +50,8 @@ sealed trait SList extends SExpr {
 }
 
 object SList {
+  def apply(xs: SExpr*): SList = create(xs)
+
   def create(xs: Seq[SExpr]): SList = {
     xs.foldRight(SNil: SList) { (x, z) =>
       SCell(x, z)
