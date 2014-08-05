@@ -6,7 +6,8 @@ package org.goldenport.sexpr
  *  version Jan.  9, 2014
  *  version Feb. 27, 2014
  *  version Apr. 23, 2014
- * @version May. 25, 2014
+ *  version May. 25, 2014
+ * @version Aug.  4, 2014
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -47,6 +48,7 @@ object SBoolean {
 
 sealed trait SList extends SExpr {
   def list: List[SExpr] = Nil
+  override def toString() = list.mkString("(", " ", ")")
 }
 
 object SList {
