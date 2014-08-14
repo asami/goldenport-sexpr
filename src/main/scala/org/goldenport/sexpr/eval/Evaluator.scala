@@ -9,7 +9,8 @@ import org.goldenport.sexpr._
  * @since   Aug.  8, 2013
  *  version Dec.  9, 2013
  *  version Feb. 28, 2014
- * @version Mar. 11, 2014
+ *  version Mar. 11, 2014
+ * @version Aug. 14, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -145,6 +146,57 @@ trait Evaluator {
   protected def create_Eval_Context(xs: List[SExpr]): EvalContext
 
   protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
+
+  // parameter
+  protected def parameter_strings(xs: Seq[SExpr]): Seq[String] = {
+    xs map {
+      case SAtom(s) => s
+      case SString(s) => s
+      case x => throw new IllegalArgumentException(s"No atom or string = $x")
+    }
+  }
+
+  protected def parameter_boolean(xs: Seq[SExpr], name: String): Boolean = {
+    val NAME = name
+    xs.exists {
+      case SAtom(NAME) => true
+      case _ => false
+    }
+  }
+
+  protected def parameter_boolean_opt(xs: Seq[SExpr], name: String): Option[Boolean] = {
+    val NAME = name
+    val a = xs collect {
+      case SAtom(NAME) => Some(true)
+    }
+    if (a.contains(Some(true))) Some(true)
+    else if (a.nonEmpty) Some(false)
+    else None
+  }
+
+  protected def parameter_ints(xs: Seq[SExpr]): Seq[Int] = {
+    xs map {
+      case SNumber(s) => s.toInt
+      case x => throw new IllegalArgumentException(s"No number = $x")
+    }
+  }
+
+  protected def parameter_values[T](master: Map[String, T], xs: Seq[SExpr]): Seq[T] = {
+    strings_to_values(master, parameter_strings(xs))
+  }
+
+  protected def strings_to_values[T](master: Map[String, T], xs: Seq[String]): Seq[T] = {
+    xs map { x =>
+      master.get(x) getOrElse {
+        throw new IllegalArgumentException("Illegal symbol '$x', Available symbols are: ${master.keys.mkString(\", \")}")
+      }
+    }
+  }
+
+  protected def to_boolean(v: Boolean) = {
+    if (v) SBoolean.TRUE
+    else SBoolean.FALSE
+  }
 }
 
 trait Binding {
