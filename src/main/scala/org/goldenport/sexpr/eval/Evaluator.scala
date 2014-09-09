@@ -10,7 +10,8 @@ import org.goldenport.sexpr._
  *  version Dec.  9, 2013
  *  version Feb. 28, 2014
  *  version Mar. 11, 2014
- * @version Aug. 14, 2014
+ *  version Aug. 14, 2014
+ * @version Sep.  6, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -174,9 +175,44 @@ trait Evaluator {
     else None
   }
 
+  protected def parameter_bytes(xs: Seq[SExpr]): Seq[Byte] = {
+    xs map {
+      case SNumber(s) => s.toByte
+      case x => throw new IllegalArgumentException(s"No number = $x")
+    }
+  }
+
+  protected def parameter_shorts(xs: Seq[SExpr]): Seq[Short] = {
+    xs map {
+      case SNumber(s) => s.toShort
+      case x => throw new IllegalArgumentException(s"No number = $x")
+    }
+  }
+
   protected def parameter_ints(xs: Seq[SExpr]): Seq[Int] = {
     xs map {
       case SNumber(s) => s.toInt
+      case x => throw new IllegalArgumentException(s"No number = $x")
+    }
+  }
+
+  protected def parameter_longs(xs: Seq[SExpr]): Seq[Long] = {
+    xs map {
+      case SNumber(s) => s.toLong
+      case x => throw new IllegalArgumentException(s"No number = $x")
+    }
+  }
+
+  protected def parameter_floats(xs: Seq[SExpr]): Seq[Float] = {
+    xs map {
+      case SNumber(s) => s.toFloat
+      case x => throw new IllegalArgumentException(s"No number = $x")
+    }
+  }
+
+  protected def parameter_doubles(xs: Seq[SExpr]): Seq[Double] = {
+    xs map {
+      case SNumber(s) => s.toDouble
       case x => throw new IllegalArgumentException(s"No number = $x")
     }
   }
