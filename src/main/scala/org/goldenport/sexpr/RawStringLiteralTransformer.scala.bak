@@ -1,0 +1,123 @@
+package org.goldenport.sexpr
+
+import scalaz._, Scalaz._, Free._
+
+/*
+ * @since   Sep. 14, 2014
+ * @version Sep. 14, 2014
+ * @author  ASAMI, Tomoharu
+ */
+object RawStringLiteralTransformer {
+  import Program._
+
+  def transform(s: CharSequence): String = {
+
+  }
+
+  implicit def programMonad[F[_]]: Monad[({type λ[α] = Program[F, α]})#λ] =
+    Free.freeMonad[({type f[x] = Coyoneda[F, x]})#f]  
+
+  sealed trait Chunk[T]
+  case object DelimiterChunk extends Chunk[T]
+  case class ContentChunk(content: T) extends Chunk[T]
+
+  val advent: CharIO ~> IO =
+    new (CharIO ~> IO){
+      def apply[A](a: CharIO[A]) = a match {
+        case GetCh     => IO.getChar
+        case PutCh(c)  => IO.putChar(c)
+        case LiftIO(f) => f
+      }
+    }
+
+  def runString[A](a: Chunk[String]): ID[String] =
+    Program.interpret(advent, a)
+}
+
+object Program {
+  // Scalaz
+  type FreeC[S[_], A] = Free[({type f[x] = Coyoneda[S, x]})#f, A]
+  def liftF[S[_], A](value: => S[A])(implicit S: Functor[S]): Free[S, A] =
+    Suspend(S.map(value)(Return[S, A]))
+
+  type Program[Instr[_], A] = FreeC[Instr, A]
+
+  
+  def singleton[T[_], A](ta: T[A]): Program[T, A] =
+    liftF[({type λ[α]=Coyoneda[T, α]})#λ, A](Coyoneda(ta))
+
+  def interpret[M[_], Instr[_], A](f: Instr ~> M, p: Program[Instr, A])(implicit M: Monad[M]): M[A] =
+    p.resume match {
+      case \/-(a) => M.pure(a)
+      case -\/(a) => M.bind(f(a.fi))(x => interpret(f, a.k(x)))
+    }
+}
+
+/*
+object Program{
+ 
+  // singleton :: t a -> Program t a
+  // singleton = liftF . liftCoyoneda
+  def singleton[T[_], A](ta: T[A]): Program[T, A] =
+    Free.liftF[({type λ[α]=Coyoneda[T, α]})#λ, A](Coyoneda(ta))
+ 
+  // interpret :: Monad m => (forall x. instr x -> m x) -> Program instr a -> m a
+  // interpret eval (Free (Coyoneda t f)) = eval t >>= interpret eval . f
+  // interpret _ (Pure a) = return a
+  def interpret[M[_], Instr[_], A](f: Instr ~> M, p: Program[Instr, A])(implicit M: Monad[M]): M[A] =
+    p.resume match {
+      case \/-(a) => M.pure(a)
+      case -\/(a) => M.bind(f(a.fi))(x => interpret(f, a.k(x)))
+    }
+ 
+}
+ 
+sealed abstract class CharIO[A]
+case object GetCh extends CharIO[Char]
+final case class PutCh(f: Char) extends CharIO[Unit]
+final case class LiftIO[A](f: IO[A]) extends CharIO[A]
+ 
+object CharIO{
+ 
+  implicit def programMonad[F[_]]: Monad[({type λ[α] = Program[F, α]})#λ] =
+    Free.freeMonad[({type f[x] = Coyoneda[F, x]})#f]
+ 
+  type Program[Instr[_], A] = Free.FreeC[Instr, A]
+ 
+  type MyIO[A] = Program[CharIO, A]
+ 
+  def getCh: MyIO[Char] = Program.singleton(GetCh)
+ 
+  def putCh(c: Char): MyIO[Unit] = Program.singleton(PutCh(c))
+ 
+  def liftIO[A](a: IO[A]): MyIO[A] = Program.singleton(LiftIO(a))
+ 
+  val advent: CharIO ~> IO =
+    new (CharIO ~> IO){
+      def apply[A](a: CharIO[A]) = a match {
+        case GetCh     => IO.getChar
+        case PutCh(c)  => IO.putChar(c)
+        case LiftIO(f) => f
+      }
+    }
+ 
+  // runCharIO :: MyIO a -> IO a
+  // runCharIO = interpret advent where
+  //   advent GetCh = getChar
+  //   advent (PutCh ch) = putChar ch
+  //   advent (LiftIO m) = m
+  def runCharIO[A](a: MyIO[A]): IO[A] =
+    Program.interpret(advent, a)
+ 
+}
+ 
+object Main extends scalaz.effect.SafeApp {
+  import CharIO._
+  val F = Monad[MyIO]
+  import F.monadSyntax._
+ 
+  val getAndPut: MyIO[Unit] = getCh >>= putCh
+ 
+  override def runc = runCharIO(getAndPut)
+}
+*/

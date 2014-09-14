@@ -9,7 +9,8 @@ import org.junit.runner.RunWith
  * @since   Sep.  9, 2012
  *  version Aug.  9, 2013
  *  version Feb.  4, 2014
- * @version Apr. 18, 2014
+ *  version Apr. 18, 2014
+ * @version Sep. 14, 2014
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -52,6 +53,24 @@ class SExprParserSpec extends WordSpec with Matchers {
     "typical" in {
       val s = SExprParser(";;comment\n(abc,xyz)")
       s should be (SCell(SAtom("abc"), SCell(SAtom("xyz"), SNil)))
+    }
+  }
+
+  "String literal" should {
+    "typical" in {
+      val s = SExprParser("\"abc\"")
+      s should be (SString("abc"))
+    }
+    "newline" in {
+      val s = SExprParser("\"abc\\ndef\\n\"")
+      s should be (SString("abc\ndef\n"))
+    }
+  }
+
+  "Row string literal" should {
+    "typical" in {
+      val s = SExprParser("\"\"\"abc\ndef\n\"\"\"")
+      s should be (SString("abc\ndef\n"))
     }
   }
 }

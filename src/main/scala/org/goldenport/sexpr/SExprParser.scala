@@ -7,13 +7,14 @@ import scalax.io.JavaConverters._
 //import org.goldenport.Strings
 import com.asamioffice.goldenport.text.UString
 
-/**
+/*
  * @since   Sep.  9, 2012
  *  version Aug.  9, 2013
  *  version Oct. 14, 2013
  *  version Feb.  4, 2014
  *  version Mar. 13, 2014
- * @version Apr. 18, 2014
+ *  version Apr. 18, 2014
+ * @version Sep. 15, 2014
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -27,17 +28,27 @@ object SExprParser extends JavaTokenParsers {
   }
 
   def apply(in: CharSequence) = {
-    val in1 = _remove_comments(in)
+    val in1 = _normalize(in.toString)
     parseAll(sexpr, in1) match {
       case Success(s, _) => s
-      case _ => throw new IllegalArgumentException("Illegal sexpr = $in")
+      case _ => throw new IllegalArgumentException(s"Illegal sexpr = $in")
     }
   }
 
-  private def _remove_comments(in: CharSequence): CharSequence = {
+  private def _normalize(in: String): String = {
+    val a = _remove_comments(in)
+    val b = _raw_string_literal(a)
+    b
+  }
+
+  private def _remove_comments(in: String): String = {
 //    Strings.tolines(in.toString).filter(_.startsWith(";;")).mkString("\n")
     val a = UString.getLineList(in.toString).toVector
     a.filterNot(_.startsWith(";;")).mkString("\n")
+  }
+
+  private def _raw_string_literal(in: String): String = {
+    RawStringLiteralTransformer.transform(in)
   }
 
   def sexpr: Parser[SExpr] = nil | list | number | boolean | string | keyword | atom
@@ -77,7 +88,10 @@ object SExprParser extends JavaTokenParsers {
 
   def string: Parser[SString] = {
     stringLiteral ^^ {
-      case string => SString(string.substring(1, string.length - 1))
+      case string =>
+        val a = string.substring(1, string.length - 1)
+        val b = a.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t")
+        SString(b)
     }
   }
 
