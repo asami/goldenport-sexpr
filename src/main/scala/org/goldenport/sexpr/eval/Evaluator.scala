@@ -11,7 +11,7 @@ import org.goldenport.sexpr._
  *  version Feb. 28, 2014
  *  version Mar. 11, 2014
  *  version Aug. 14, 2014
- * @version Sep.  6, 2014
+ * @version Sep. 18, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -149,6 +149,7 @@ trait Evaluator {
   protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
 
   // parameter
+  // TODO unify SExprConverters
   protected def parameter_strings(xs: Seq[SExpr]): Seq[String] = {
     xs map {
       case SAtom(s) => s
