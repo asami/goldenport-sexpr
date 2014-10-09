@@ -11,7 +11,8 @@ import org.goldenport.sexpr._
  *  version Feb. 28, 2014
  *  version Mar. 11, 2014
  *  version Aug. 14, 2014
- * @version Sep. 18, 2014
+ *  version Sep. 18, 2014
+ * @version Oct.  8, 2014
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -46,14 +47,14 @@ trait Evaluator {
         val cs = Vector(create_Eval_Context(Nil))
         _stack.toStream.flatMap(_.function(atom)).headOption match {
           case Some(f) => f(reduction_Context(cs)).value
-          case None => sys.error("???")
+          case None => atom // in case of not binding, return the atom itself.
         }
       }
     }
   }
 
   protected def eval_keyword(keyword: SKeyword): SExpr = {
-    sys.error("???")
+    sys.error(s"Evaluator#evel_keyword: $keyword")
   }
 
   protected def eval_number(num: SNumber): SExpr = {
@@ -73,7 +74,7 @@ trait Evaluator {
   }
 
   protected def eval_pseudo(pseudo: SPseudo): SExpr = {
-    sys.error("???")
+    sys.error(s"Evaluator#eval_pseudo: $pseudo")
   }
 
 /*
@@ -135,10 +136,10 @@ trait Evaluator {
         val cs = b.tail.map(eval_to_context)
         _stack.toStream.flatMap(_.function(atom)).headOption match {
           case Some(f) => f(reduction_Context(cs))
-          case None => sys.error("???")
+          case None => sys.error(s"Evaluator#eval_to_context: $list")
         }
       }
-      case _ => sys.error("???")
+      case _ => sys.error(s"Evaluator#eval_to_context: $list")
     }
   }
 
