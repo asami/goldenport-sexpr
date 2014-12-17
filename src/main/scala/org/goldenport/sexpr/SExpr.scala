@@ -7,7 +7,8 @@ package org.goldenport.sexpr
  *  version Feb. 27, 2014
  *  version Apr. 23, 2014
  *  version May. 25, 2014
- * @version Aug.  4, 2014
+ *  version Aug.  4, 2014
+ * @version Dec. 17, 2014
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -27,7 +28,8 @@ case class SNumber(number: String) extends SExpr {
 }
 
 case class SString(string: String) extends SExpr {
-  override def toString() = '"' + string + '"'
+  import SExpr.toStringLiteral
+  override def toString() = toStringLiteral(string)
 }
 
 case class SBoolean(value: Boolean) extends SExpr {
@@ -101,50 +103,64 @@ object SExpr {
     buf.toList
   }
 
-  implicit object SExprToSExpr extends PartialFunction[SExpr, SExpr] {
-    def isDefinedAt(s: SExpr): Boolean = true
-    def apply(s: SExpr): SExpr = s
+  def toStringLiteral(s: String): String = {
+    val a = if (
+      s.contains('\n') | s.contains('\r') | s.contains('\t') |
+        s.contains('\"')
+    )
+      s.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t").
+        replace("\"", "\\\"")
+    else
+      s
+    "\"" + a + "\""
   }
 
-  implicit object SExprToString extends PartialFunction[SExpr, String] {
-    def isDefinedAt(s: SExpr): Boolean = {
-      s match {
-        case _: SString => true
-        case _ => false
-      }
+  object Implicits {
+    implicit object SExprToSExpr extends PartialFunction[SExpr, SExpr] {
+      def isDefinedAt(s: SExpr): Boolean = true
+      def apply(s: SExpr): SExpr = s
     }
-    def apply(s: SExpr): String = {
-      (s: @unchecked) match {
-        case s: SString => s.string
-      }
-    }
-  }
 
-  implicit object SExprToSExprList extends PartialFunction[SExpr, List[SExpr]] {
-    def isDefinedAt(s: SExpr): Boolean = {
-      s match {
-        case _: SCell => true
-        case _ => false
+    implicit object SExprToString extends PartialFunction[SExpr, String] {
+      def isDefinedAt(s: SExpr): Boolean = {
+        s match {
+          case _: SString => true
+          case _ => false
+        }
       }
-    }
-    def apply(s: SExpr): List[SExpr] = {
-      s.toList.get
-    }
-  }
-
-  implicit object SExprToStringList extends PartialFunction[SExpr, List[String]] {
-    def isDefinedAt(s: SExpr): Boolean = {
-      s match {
-        case _: SCell => true
-        case _ => false
-      }
-    }
-    def apply(s: SExpr): List[String] = {
-      s.toList match {
-        case Some(xs) => xs.collect {
+      def apply(s: SExpr): String = {
+        (s: @unchecked) match {
           case s: SString => s.string
         }
-        case _ => Nil
+      }
+    }
+
+    implicit object SExprToSExprList extends PartialFunction[SExpr, List[SExpr]] {
+      def isDefinedAt(s: SExpr): Boolean = {
+        s match {
+          case _: SCell => true
+          case _ => false
+        }
+      }
+      def apply(s: SExpr): List[SExpr] = {
+        s.toList.get
+      }
+    }
+
+    implicit object SExprToStringList extends PartialFunction[SExpr, List[String]] {
+      def isDefinedAt(s: SExpr): Boolean = {
+        s match {
+          case _: SCell => true
+          case _ => false
+        }
+      }
+      def apply(s: SExpr): List[String] = {
+        s.toList match {
+          case Some(xs) => xs.collect {
+            case s: SString => s.string
+          }
+          case _ => Nil
+        }
       }
     }
   }

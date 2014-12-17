@@ -9,12 +9,13 @@ import org.junit.runner.RunWith
  * @since   Sep.  9, 2012
  *  version Sep.  9, 2012
  *  version Aug.  8, 2013
- * @version Feb.  4, 2014
+ *  version Feb.  4, 2014
+ * @version Dec. 17, 2014
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
 class SExprSpec extends WordSpec with Matchers {
-  import org.goldenport.sexpr.SExpr._
+  import org.goldenport.sexpr.SExpr.Implicits._
 
   "SExpr" should {
     "list" which {

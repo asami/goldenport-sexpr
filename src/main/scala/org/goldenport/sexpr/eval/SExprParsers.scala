@@ -10,7 +10,8 @@ import org.goldenport.sexpr._
  *  version Feb.  4, 2014
  *  version Mar. 11, 2014
  *  version Apr. 23, 2014
- * @version May. 25, 2014
+ *  version May. 25, 2014
+ * @version Nov. 28, 2014
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -327,6 +328,27 @@ trait SExprParsers extends Parsers {
       case (_, v: Boolean) => v
       case (_, v) => throw new IllegalArgumentException("Illegal boolean %s = %s".format(name, v))
     }
+  }
+
+  protected def as_int(
+    name: String, params: Seq[(String, Any)],
+    v: Int
+  ): Int = {
+    get_int(name, params) getOrElse v
+  }
+
+  protected def get_int(name: String, params: Seq[(String, Any)]): Option[Int] = {
+    params.find(_._1 == name).map {
+      case (_, v: Int) => v
+      case (_, v) => throw new IllegalArgumentException("Illegal int %s = %s".format(name, v))
+    }
+  }
+
+  protected def as_long(
+    name: String, params: Seq[(String, Any)],
+    v: Long
+  ): Long = {
+    get_long(name, params) getOrElse v
   }
 
   protected def get_long(name: String, params: Seq[(String, Any)]): Option[Long] = {

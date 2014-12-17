@@ -2,9 +2,7 @@ package org.goldenport.sexpr
 
 import java.io.Reader
 import scala.util.parsing.combinator.JavaTokenParsers
-//import scalax.io.{JavaConverters,Codec,LongTraversable,Line}
 import scalax.io.JavaConverters._
-//import org.goldenport.Strings
 import com.asamioffice.goldenport.text.UString
 
 /*
@@ -14,7 +12,8 @@ import com.asamioffice.goldenport.text.UString
  *  version Feb.  4, 2014
  *  version Mar. 13, 2014
  *  version Apr. 18, 2014
- * @version Sep. 15, 2014
+ *  version Sep. 15, 2014
+ * @version Dec. 17, 2014
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -90,7 +89,8 @@ object SExprParser extends JavaTokenParsers {
     stringLiteral ^^ {
       case string =>
         val a = string.substring(1, string.length - 1)
-        val b = a.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t")
+        val b = a.replace("\\n", "\n").replace("\\r", "\r").
+          replace("\\t", "\t").replace("\\\"", "\"")
         SString(b)
     }
   }
