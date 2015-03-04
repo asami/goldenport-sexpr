@@ -2,6 +2,7 @@ package org.goldenport.sexpr
 
 import java.io.Reader
 import scala.util.parsing.combinator.JavaTokenParsers
+import scala.collection.mutable.LinkedHashMap
 import scalax.io.JavaConverters._
 import com.asamioffice.goldenport.text.UString
 
@@ -19,7 +20,30 @@ import com.asamioffice.goldenport.text.UString
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
+  val CACHE_SIZE = 1000
   override protected val whiteSpace = """[\s,]+""".r
+
+  private var _cache = new LinkedHashMap[String, SExpr]()
+
+  def parseWithCaching(in: CharSequence): SExpr = {
+    val in1 = _normalize(in.toString)
+    _get_cache(in1) getOrElse {
+      parseAll(sexpr, in1) match {
+        case Success(s, _) => _put_cache(in1, s); s
+        case _ => throw new IllegalArgumentException(s"Illegal sexpr = $in")
+      }
+    }
+  }
+
+  private def _get_cache(s: String): Option[SExpr] = {
+    _cache.get(s)
+  }
+
+  private def _put_cache(s: String, expr: SExpr) {
+    _cache.put(s, expr)
+    _cache = _cache.take(CACHE_SIZE)
+  }
+
   def apply(reader: Reader): SExpr = {
     apply(reader.asReadChars.string)
     // parseAll(sexpr, reader) match {
