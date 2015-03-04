@@ -13,7 +13,9 @@ import com.asamioffice.goldenport.text.UString
  *  version Mar. 13, 2014
  *  version Apr. 18, 2014
  *  version Sep. 15, 2014
- * @version Dec. 17, 2014
+ *  version Dec. 17, 2014
+ *  version Feb.  6, 2015
+ * @version Mar.  5, 2015
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -26,7 +28,7 @@ object SExprParser extends JavaTokenParsers {
     // }
   }
 
-  def apply(in: CharSequence) = {
+  def apply(in: CharSequence): SExpr = {
     val in1 = _normalize(in.toString)
     parseAll(sexpr, in1) match {
       case Success(s, _) => s
@@ -86,7 +88,7 @@ object SExprParser extends JavaTokenParsers {
   }
 
   def string: Parser[SString] = {
-    stringLiteral ^^ {
+    myStringLiteral ^^ {
       case string =>
         val a = string.substring(1, string.length - 1)
         val b = a.replace("\\n", "\n").replace("\\r", "\r").
@@ -95,6 +97,12 @@ object SExprParser extends JavaTokenParsers {
     }
   }
 
+  def myStringLiteral: Parser[String] = {
+    // Scala 2.10.3
+    // https://github.com/scala/scala/issues/3017
+//    ("\""+"""([^"\p{Cntrl}\\]|\\[\\'"bfnrt]|\\u[a-fA-F0-9]{4})*"""+"\"").r
+    ("\"" + """([^"\p{Cntrl}\\]*+(?:\\[\\'"bfnrt])*+(?:\\u[a-fA-F0-9]{4})*+)*+""" + "\"").r
+  }
 
   def nil: Parser[SList] = {
     "nil" ^^ {

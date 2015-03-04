@@ -11,7 +11,9 @@ import org.junit.runner.RunWith
  *  version Feb.  4, 2014
  *  version Apr. 18, 2014
  *  version Sep. 14, 2014
- * @version Dec. 17, 2014
+ *  version Dec. 17, 2014
+ *  version Feb.  6, 2015
+ * @version Mar.  5, 2015
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -37,6 +39,10 @@ class SExprParserSpec extends WordSpec with Matchers {
       "日本語" in {
         val s = SExprParser("(日本語)")
         s should be (SCell(SAtom("日本語"), SNil))
+      }
+      "delimiter space" in {
+        val s = SExprParser("(abc (xyz) )")
+        s should be (SCell(SAtom("abc"), SCell(SCell(SAtom("xyz"), SNil), SNil)))
       }
     }
   }
@@ -83,6 +89,13 @@ class SExprParserSpec extends WordSpec with Matchers {
     "doule quote" in {
       val s = SExprParser("\"\"\"abc\nd\"e\"f\n\"\"\"")
       s should be (SString("abc\nd\"e\"f\n"))
+    }
+  }
+
+  "Real world" should {
+    "Long string" in {
+      val expr = """("FREAKSNEWShttp://www.freaksstore.com${full_name:フリークスストア会員}様現在の会員ステージ：${current_rank:}只今のポイント：${current_point:}ポイントポイントの有効期限：${point_expired_at:}いつもFREAKSSTOREをご愛顧頂きまして誠にありがとうございます。。今週は注目のアイテム、ニューバランスとトレンドの店舗限定のインディアンジュエリーのご紹介です！【WOMENS】今の気分は、春らしいnewbalnce。次の１足にはこちらがオススメ!ニューバランスの春夏スタート！http://freaksstore.com/news/2015/02/new-balnce.php【MENS】伝統と革新が織りなす日本初上陸のインディアンジュエリー。http://freaksstore.com/news/2015/02/mens-4.php3.20(金)NEWSHOP、なんばパークス店GRANDOPEN!!http://freaksstore.com/news/2015/02/320new-shopgrand-open.php" (html "<metahttp-equiv=Content-Languagecontent=ja><metahttp-equiv=Content-Typecontent=text/html;charset=iso-2022-jp><title></title><metahttp-equiv=Content-Style-Typecontent=text/css><styletype=text/css><!--body{line-height:22px;color:#000000;width:600px;margin:0auto;text-align:center;font-size:12px;}tabletrtd{line-height:1.6em;}img{vertical-align:middle;}a:link{color:#61852d;}--></style><styletype=text/css><!--p.MsoPlainText{margin:0mm;margin-bottom:.0001pt;font-size:10.0pt;font-family:ＭＳゴシック;}--></style><styletype=text/css><!--p.MsoNormal{margin:0mm;margin-bottom:.0001pt;font-size:12.0pt;font-family:ＭＳＰゴシック;}--></style><divstyle=width:600px;margin:0auto;padding:10px030px;background:#fff;><tablecellpad<metahttp-equiv=Content-Languagecontent=ja><metahttp-equiv=Content-Typecontent=text/html;charset=iso-2022-jp><title></title><metahttp-equiv=Content-Style-Typecontent=text/css><styletype=text/css><!--body{line-height:22px;color:#000000;width:600px;margin:0auto;text-align:center;font-size:12px;}tabletrtd{line-height:1.6em;}img{vertical-align:middle;}a:link{color:#61852d;}--></style><styletype=text/css><!--p.MsoPlainText{margin:0mm;margin-bottom:.0001pt;font-size:10.0pt;font-family:ＭＳゴシック;}--></style><styletype=text/css><!--p.MsoNormal{margin:0mm;margin-bottom:.0001pt;font-size:12.0pt;font-family:ＭＳＰゴシック;}--></style><divstyle=width:600px;margin:0auto;padding:10px030px;background:#fff;><tablecellpad<metahttp-equiv=Content-Languagecontent=ja><metahttp-equiv=Content-Typecontent=text/html;charset=iso-2022-jp><title></title><metahttp-equiv=Content-Style-Typecontent=text/css><styletype=text/css><!--body{line-height:22px;color:#000000;width:600px;margin:0auto;text-align:center;font-size:12px;}tabletrtd{line-height:1.6em;}img{vertical-align:middle;}a:link{color:#61852d;}--></style><styletype=text/css><!--p.MsoPlainText{margin:0mm;margin-bottom:.0001pt;font-size:10.0pt;font-family:ＭＳゴシック;}--></style><styletype=text/css><!--p.MsoNormal{margin:0mm;margin-bottom:.0001pt;font-size:12.0pt;font-family:ＭＳＰゴシック;}--></style><divstyle=width:600px;margin:0auto;padding:10px030px;background:#fff;><tablecellpad<metahttp-equiv=Content-Languagecontent=ja><metahttp-equiv=Content-Typecontent=text/html;charset=iso-2022-jp><title></title><metahttp-equiv=Content-Style-Typecontent=text/css><styletype=text/css><!--body{line-height:22px;color:#000000;width:600px;margin:0auto;text-align:center;font-size:12px;}tabletrtd{line-height:1.6em;}img{vertical-align:middle;}a:link{color:#61852d;}--></style><styletype=text/css><!--p.MsoPlainText{margin:0mm;margin-bottom:.0001pt;font-size:10.0pt;font-family:ＭＳゴシック;}--></style><styletype=text/css><!--p.MsoNormal{margin:0mm;margin-bottom:.0001pt;font-size:12.0pt;font-family:ＭＳＰゴシック;}--></style><divstyle=width:600px;margin:0auto;padding:10px030px;background:#fff;><tablecellpad<metahttp-equiv=Content-Languagecontent=ja><metahttp-equiv=Content-Typecontent=text/html;charset=iso-2022-jp><title></title><metahttp-equiv=Content-Style-Typecontent=text/css><styletype=text/css><!--body{line-height:22px;color:#000000;width:600px;margin:0auto;text-align:center;font-size:12px;}tabletrtd{line-height:1.6em;}img{vertical-align:middle;}a:link{color:#61852d;}--></style><styletype=text/css><!--p.MsoPlainText{margin:0mm;margin-bottom:.0001pt;font-size:10.0pt;font-family:ＭＳゴシック;}--></style><styletype=text/css><!--p.MsoNormal{margin:0mm;margin-bottom:.0001pt;font-size:12.0pt;font-family:ＭＳＰゴシック;}--></style><divstyle=width:600px;margin:0auto;padding:10px030px;background:#fff;><tablecellpad"))"""
+      val s = SExprParser(expr)
     }
   }
 }
