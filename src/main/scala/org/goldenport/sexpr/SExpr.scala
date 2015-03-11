@@ -8,7 +8,8 @@ package org.goldenport.sexpr
  *  version Apr. 23, 2014
  *  version May. 25, 2014
  *  version Aug.  4, 2014
- * @version Dec. 17, 2014
+ *  version Dec. 17, 2014
+ * @version Mar. 11, 2015
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -103,15 +104,18 @@ object SExpr {
     buf.toList
   }
 
+  // sync with SExprParser#string
   def toStringLiteral(s: String): String = {
-    val a = if (
-      s.contains('\n') | s.contains('\r') | s.contains('\t') |
-        s.contains('\"')
-    )
-      s.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t").
-        replace("\"", "\\\"")
-    else
-      s
+    val a =
+      if (s.contains('\n') | s.contains('\r') | s.contains('\t') |
+        s.contains('\"') | s.contains('\\')
+      ) {
+        s.replace("\\", "\\\\").
+          replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t").
+          replace("\"", "\\\"")
+      } else {
+        s
+      }
     "\"" + a + "\""
   }
 

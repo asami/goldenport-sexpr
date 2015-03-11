@@ -10,7 +10,8 @@ import org.junit.runner.RunWith
  *  version Sep.  9, 2012
  *  version Aug.  8, 2013
  *  version Feb.  4, 2014
- * @version Dec. 17, 2014
+ *  version Dec. 17, 2014
+ * @version Mar. 11, 2015
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -18,6 +19,31 @@ class SExprSpec extends WordSpec with Matchers {
   import org.goldenport.sexpr.SExpr.Implicits._
 
   "SExpr" should {
+    "literal" which {
+      "backslash" in {
+        val rawtext = """abc \9 xyz"""
+        val text = """abc \\9 xyz"""
+        val literal = "\"" + text + "\""
+        var s = SExprParser(literal)
+        s should equal (SString(rawtext))
+        s.toString should equal (literal)
+      }
+      "backslash in expr" in {
+        val rawtext = """abc \9 xyz"""
+        val text = """abc \\9 xyz"""
+        val literal = "(\"" + text + "\")"
+        var s = SExprParser(literal)
+        s should equal (SList(SString(rawtext)))
+        s.toString should equal (literal)
+      }
+      "invalid backslash" in {
+        val text = """abc \9 xyz"""
+        val literal = "(\"" + text + "\")"
+        intercept[IllegalArgumentException] {
+          SExprParser(literal)
+        }
+      }
+    }
     "list" which {
       "dropWhile" in {
         var s = SExprParser("(:k 100)")

@@ -16,7 +16,7 @@ import com.asamioffice.goldenport.text.UString
  *  version Sep. 15, 2014
  *  version Dec. 17, 2014
  *  version Feb.  6, 2015
- * @version Mar.  5, 2015
+ * @version Mar. 11, 2015
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -115,8 +115,9 @@ object SExprParser extends JavaTokenParsers {
     myStringLiteral ^^ {
       case string =>
         val a = string.substring(1, string.length - 1)
+        // sync with SExpr.toStringLiteral
         val b = a.replace("\\n", "\n").replace("\\r", "\r").
-          replace("\\t", "\t").replace("\\\"", "\"")
+          replace("\\t", "\t").replace("\\\"", "\"").replace("\\\\", "\\")
         SString(b)
     }
   }
