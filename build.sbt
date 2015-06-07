@@ -2,7 +2,7 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "1.1.2"
+version := "1.1.3-SNAPSHOT"
 
 scalaVersion := "2.10.3"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")

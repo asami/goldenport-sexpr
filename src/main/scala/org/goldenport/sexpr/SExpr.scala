@@ -9,7 +9,8 @@ package org.goldenport.sexpr
  *  version May. 25, 2014
  *  version Aug.  4, 2014
  *  version Dec. 17, 2014
- * @version Mar. 11, 2015
+ *  version Mar. 11, 2015
+ * @version May. 23, 2015
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -67,6 +68,10 @@ object SList {
 case class SCell(car: SExpr, cdr: SExpr) extends SList {
   override def toList: Option[List[SExpr]] = Some(list)
   override def list: List[SExpr] = SExpr.build(this)
+  override def toString() = cdr match {
+    case _: SList => super.toString()
+    case x => s"($car . $x)"
+  }
 }
 
 case object SNil extends SList
