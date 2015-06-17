@@ -13,7 +13,7 @@ import org.goldenport.sexpr._
  *  version Aug. 14, 2014
  *  version Sep. 18, 2014
  *  version Oct.  8, 2014
- * @version Jun.  6, 2015
+ * @version Jun. 17, 2015
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -137,10 +137,10 @@ trait Evaluator {
         val cs = b.tail.map(eval_to_context)
         _stack.toStream.flatMap(_.function(atom)).headOption match {
           case Some(f) => f(reduction_Context(cs))
-          case None => sys.error(s"Evaluator#eval_to_context: $list")
+          case None => create_Eval_Context(list) // sys.error(s"Evaluator#eval_to_context: $list")
         }
       }
-      case _ => sys.error(s"Evaluator#eval_to_context: $list")
+      case _ => create_Eval_Context(list) // sys.error(s"Evaluator#eval_to_context: $list")
     }
   }
 
