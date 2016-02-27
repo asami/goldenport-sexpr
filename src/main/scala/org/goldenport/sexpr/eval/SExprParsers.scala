@@ -13,7 +13,8 @@ import org.goldenport.sexpr.util.AnyUtils
  *  version Apr. 23, 2014
  *  version May. 25, 2014
  *  version Nov. 28, 2014
- * @version Dec.  6, 2015
+ *  version Dec.  6, 2015
+ * @version Feb. 27, 2016
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -423,13 +424,18 @@ trait SExprParsers extends Parsers {
     }
   }
  
-  protected def get_string_list(name: String, params: Seq[(String, Any)]): List[String] = {
-    params.filter(_._1 == name).map(_._2.toString).toList
-  }
+  protected def get_string_list(name: String, params: Seq[(String, Any)]): List[String] =
+    get_string_vector(name, params).toList
 
-  protected def get_string_vector(name: String, params: Seq[(String, Any)]): Vector[String] = {
-    params.filter(_._1 == name).map(_._2.toString).toVector
-  }
+  protected def get_string_vector(name: String, params: Seq[(String, Any)]): Vector[String] =
+    params.filter(_._1 == name).toVector.
+      flatMap(x => _to_string_vector(x._2))
+
+  private def _to_string_vector(p: Any): Vector[String] =
+    p match {
+      case m: Seq[_] => m.toVector.flatMap(_to_string_vector)
+      case m => Vector(m.toString)
+    }
 
   protected def expr_list = new Parser[List[SExpr]] {
     def apply(in: Input) = {
