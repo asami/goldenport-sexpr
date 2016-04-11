@@ -12,7 +12,8 @@ import org.goldenport.sexpr._
  *  version Mar. 11, 2014
  *  version Aug. 14, 2014
  *  version Sep. 18, 2014
- * @version Oct.  8, 2014
+ *  version Oct.  8, 2014
+ * @version Jun. 17, 2015
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator {
@@ -136,10 +137,10 @@ trait Evaluator {
         val cs = b.tail.map(eval_to_context)
         _stack.toStream.flatMap(_.function(atom)).headOption match {
           case Some(f) => f(reduction_Context(cs))
-          case None => sys.error(s"Evaluator#eval_to_context: $list")
+          case None => create_Eval_Context(list) // sys.error(s"Evaluator#eval_to_context: $list")
         }
       }
-      case _ => sys.error(s"Evaluator#eval_to_context: $list")
+      case _ => create_Eval_Context(list) // sys.error(s"Evaluator#eval_to_context: $list")
     }
   }
 
@@ -231,9 +232,40 @@ trait Evaluator {
     }
   }
 
+  /*
+   * Result value conversion
+   */
+  // deprecated
   protected def to_boolean(v: Boolean) = {
     if (v) SBoolean.TRUE
     else SBoolean.FALSE
+  }
+
+  protected def to_sboolean(v: Boolean) = {
+    if (v) SBoolean.TRUE
+    else SBoolean.FALSE
+  }
+
+  protected def to_sstring(v: String) = SString(v)
+
+  protected def to_sstrings(v: Seq[String]) = {
+    SList.create(v.map(to_sstring))
+  }
+
+  protected def to_sstringmap(v: Map[String, String]) = {
+    val a = v.toList.map(x => SCell(SString(x._1), SString(x._2)))
+    SList.create(a)
+  }
+
+  /*
+   * Utility
+   */
+  protected def is_true(expr: SExpr): Boolean = {
+    expr match {
+      case SBoolean(v) => v
+      case SNil => false
+      case _ => true
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import scala.util.control.NonFatal
 import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input._
 import org.goldenport.sexpr._
+import org.goldenport.sexpr.util.AnyUtils
 
 /*
  * @since   Jan.  9, 2014
@@ -11,7 +12,9 @@ import org.goldenport.sexpr._
  *  version Mar. 11, 2014
  *  version Apr. 23, 2014
  *  version May. 25, 2014
- * @version Nov. 28, 2014
+ *  version Nov. 28, 2014
+ *  version Dec.  6, 2015
+ * @version Feb. 27, 2016
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -193,17 +196,17 @@ trait SExprParsers extends Parsers {
     open ~ atom(name) ~> string <~ close
   }
 
-  protected def atom_long_list(name: String): Parser[Seq[Long]] = {
+  protected def atom_long_list(name: String): Parser[List[Long]] = {
     // XXX handle keywords
     open ~ atom(name) ~> number_long.* <~ close
   }
 
-  protected def atom_string_list(name: String): Parser[Seq[String]] = {
+  protected def atom_string_list(name: String): Parser[List[String]] = {
     // XXX handle keywords
     open ~ atom(name) ~> string.* <~ close
   }
 
-  protected def atom_expr_list(name: String): Parser[Seq[SExpr]] = {
+  protected def atom_expr_list(name: String): Parser[List[SExpr]] = {
     // XXX handle keywords
     open ~ atom(name) ~> expr_list <~ close ^^ {
       case exprs => exprs
@@ -258,20 +261,26 @@ trait SExprParsers extends Parsers {
     }
   }
 
-  protected def atom_name_long_list(name: String): Parser[(String, Seq[Long])] = {
+  protected def atom_name_long_list(name: String): Parser[(String, List[Long])] = {
     atom_long_list(name) ^^ {
       case v => name -> v
     }
   }
 
-  protected def atom_name_string_list(name: String): Parser[(String, Seq[String])] = {
+  protected def atom_name_string_list(name: String): Parser[(String, List[String])] = {
     atom_string_list(name) ^^ {
       case v => name -> v
     }
   }
 
-  protected def atom_name_expr_list(name: String): Parser[(String, Seq[SExpr])] = {
+  protected def atom_name_expr_list(name: String): Parser[(String, List[SExpr])] = {
     atom_expr_list(name) ^^ {
+      case v => name -> v
+    }
+  }
+
+  protected def atom_name_atom_name(name: String): Parser[(String, String)] = {
+    atom_atom_name(name) ^^ {
       case v => name -> v
     }
   }
@@ -344,6 +353,28 @@ trait SExprParsers extends Parsers {
     }
   }
 
+  protected def get_int_list(name: String, params: Seq[(String, Any)]): List[Int] = {
+    get_int_list_option(name, params) getOrElse Nil
+  }
+
+  protected def get_int_list_option(name: String, params: Seq[(String, Any)]): Option[List[Int]] = {
+    params.find(_._1 == name).map {
+      case (_, xs: Seq[_]) => xs.map(AnyUtils.toInt).toList
+      case (_, x) => List(AnyUtils.toInt(x))
+    }
+  }
+
+  protected def get_int_vector(name: String, params: Seq[(String, Any)]): Vector[Int] = {
+    get_int_vector_option(name, params) getOrElse Vector.empty
+  }
+
+  protected def get_int_vector_option(name: String, params: Seq[(String, Any)]): Option[Vector[Int]] = {
+    params.find(_._1 == name).map {
+      case (_, xs: Seq[_]) => xs.map(AnyUtils.toInt).toVector
+      case (_, x) => Vector(AnyUtils.toInt(x))
+    }
+  }
+
   protected def as_long(
     name: String, params: Seq[(String, Any)],
     v: Long
@@ -355,6 +386,28 @@ trait SExprParsers extends Parsers {
     params.find(_._1 == name).map {
       case (_, v: Long) => v
       case (_, v) => throw new IllegalArgumentException("Illegal long %s = %s".format(name, v))
+    }
+  }
+
+  protected def get_long_list(name: String, params: Seq[(String, Any)]): List[Long] = {
+    get_long_list_option(name, params) getOrElse Nil
+  }
+
+  protected def get_long_list_option(name: String, params: Seq[(String, Any)]): Option[List[Long]] = {
+    params.find(_._1 == name).map {
+      case (_, xs: Seq[_]) => xs.map(AnyUtils.toLong).toList
+      case (_, x) => List(AnyUtils.toLong(x))
+    }
+  }
+
+  protected def get_long_vector(name: String, params: Seq[(String, Any)]): Vector[Long] = {
+    get_long_vector_option(name, params) getOrElse Vector.empty
+  }
+
+  protected def get_long_vector_option(name: String, params: Seq[(String, Any)]): Option[Vector[Long]] = {
+    params.find(_._1 == name).map {
+      case (_, xs: Seq[_]) => xs.map(AnyUtils.toLong).toVector
+      case (_, x) => Vector(AnyUtils.toLong(x))
     }
   }
 
@@ -371,14 +424,30 @@ trait SExprParsers extends Parsers {
     }
   }
  
-  protected def get_string_vector(name: String, params: Seq[(String, Any)]): Vector[String] = {
-    params.filter(_._1 == name).map(_._2.toString).toVector
-  }
+  protected def get_string_list(name: String, params: Seq[(String, Any)]): List[String] =
+    get_string_vector(name, params).toList
 
-  protected def expr_list = new Parser[Seq[SExpr]] {
+  protected def get_string_vector(name: String, params: Seq[(String, Any)]): Vector[String] =
+    params.filter(_._1 == name).toVector.
+      flatMap(x => _to_string_vector(x._2))
+
+  private def _to_string_vector(p: Any): Vector[String] =
+    p match {
+      case m: Seq[_] => m.toVector.flatMap(_to_string_vector)
+      case m => Vector(m.toString)
+    }
+
+  protected def expr_list = new Parser[List[SExpr]] {
     def apply(in: Input) = {
       val (r, i) = contents(in)
-      Success(r, i)
+      Success(r.toList, i)
+    }
+  }
+
+  protected def expr_vector = new Parser[Vector[SExpr]] {
+    def apply(in: Input) = {
+      val (r, i) = contents(in)
+      Success(r.toVector, i)
     }
   }
 

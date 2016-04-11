@@ -16,7 +16,8 @@ import com.asamioffice.goldenport.text.UString
  *  version Sep. 15, 2014
  *  version Dec. 17, 2014
  *  version Feb.  6, 2015
- * @version Mar. 11, 2015
+ *  version Mar. 11, 2015
+ * @version Mar. 10, 2016
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -25,12 +26,12 @@ object SExprParser extends JavaTokenParsers {
 
   private var _cache = new LinkedHashMap[String, SExpr]()
 
-  def parseWithCaching(in: CharSequence): SExpr = {
+  def parseWithCache(in: CharSequence): SExpr = {
     val in1 = _normalize(in.toString)
     _get_cache(in1) getOrElse {
       parseAll(sexpr, in1) match {
         case Success(s, _) => _put_cache(in1, s); s
-        case _ => throw new IllegalArgumentException(s"Illegal sexpr = $in")
+        case Failure(msg, in) => throw new IllegalArgumentException(s"$msg [${in.offset}]: ${in.rest.source}")
       }
     }
   }
@@ -56,7 +57,7 @@ object SExprParser extends JavaTokenParsers {
     val in1 = _normalize(in.toString)
     parseAll(sexpr, in1) match {
       case Success(s, _) => s
-      case _ => throw new IllegalArgumentException(s"Illegal sexpr = $in")
+      case Failure(msg, in) => throw new IllegalArgumentException(s"$msg [${in.offset}]: ${in.rest.source} in ${in.source}")
     }
   }
 
