@@ -2,7 +2,7 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "1.1.7"
+version := "2.0"
 
 scalaVersion := "2.10.3"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")
@@ -13,11 +13,15 @@ scalacOptions += "-unchecked"
 
 resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
 
-// libraryDependencies += "org.scalaz" %% "scalaz-core" % "7.0.6"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.2.27"
 
-// libraryDependencies += "com.github.scala-incubator.io" %% "scala-io-core" % "0.4.3" % "compile"
+libraryDependencies += "org.goldenport" %% "goldenport-record" % "1.2.24" % "provided"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.1.1"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3" % "provided"
+
+libraryDependencies += "com.typesafe.play" %% "play-json" % "2.2.2" % "provided"
+
+libraryDependencies += "commons-jxpath" % "commons-jxpath" % "1.3" % "provided"
 
 libraryDependencies += "junit" % "junit" % "4.10" % "test"
 
