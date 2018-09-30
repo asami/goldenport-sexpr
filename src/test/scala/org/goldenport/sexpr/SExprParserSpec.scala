@@ -13,7 +13,8 @@ import org.junit.runner.RunWith
  *  version Sep. 14, 2014
  *  version Dec. 17, 2014
  *  version Feb.  6, 2015
- * @version Mar.  5, 2015
+ *  version Mar.  5, 2015
+ * @version Sep. 16, 2018
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -75,7 +76,7 @@ class SExprParserSpec extends WordSpec with Matchers {
     "double quote" in {
       val s = SExprParser("\"abc\\nd\\\"e\\\"f\\n\"")
       s should be (SString("abc\nd\"e\"f\n"))
-      val t = s.toString
+      val t = s.show
       t should be ("\"abc\\nd\\\"e\\\"f\\n\"")
       s.asInstanceOf[SString].string should be ("abc\nd\"e\"f\n")
     }

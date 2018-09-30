@@ -7,7 +7,8 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Aug.  9, 2013
- * @version Feb.  4, 2014
+ *  version Feb.  4, 2014
+ * @version Sep.  2, 2018
  * @author  ASAMI, Tomoharu
  */
 trait Translator[T] {
@@ -19,6 +20,9 @@ trait Translator[T] {
       case b: SBoolean => trans_boolean(b)
       case s: SString => trans_string(s)
       case xs: SList => trans_list(xs)
+      case r: SRecord => ???
+      case t: STable => ???
+      case e: SExtension => ???
       case p: SPseudo => trans_pseudo(p)
     }
   }

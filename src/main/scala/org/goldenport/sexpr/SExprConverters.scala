@@ -2,7 +2,8 @@ package org.goldenport.sexpr
 
 /*
  * @since   Sep. 18, 2014
- * @version Sep. 18, 2014
+ *  version Sep. 18, 2014
+ * @version Sep.  1, 2018
  * @author  ASAMI, Tomoharu
  */
 object SExprConverters {
@@ -96,18 +97,18 @@ object SExprConverters {
   }
 
   def fromInt(v: Int) = {
-    SNumber(v.toString)
+    SNumber(BigDecimal(v))
   }
 
   def fromLong(v: Long) = {
-    SNumber(v.toString)
+    SNumber(BigDecimal(v))
   }
 
   def fromFloat(v: Float) = {
-    SNumber(v.toString)
+    SNumber(BigDecimal(v))
   }
 
   def fromDouble(v: Double) = {
-    SNumber(v.toString)
+    SNumber(BigDecimal(v))
   }
 }

@@ -1,8 +1,8 @@
 package org.goldenport.sexpr.eval
 
-import scala.collection.mutable.{
-  Stack, HashMap
-}
+import scala.collection.mutable.{Stack, HashMap}
+import org.goldenport.config.ConfigHelper
+import org.goldenport.log.LogMark, LogMark._
 import org.goldenport.sexpr._
 
 /*
@@ -13,31 +13,77 @@ import org.goldenport.sexpr._
  *  version Aug. 14, 2014
  *  version Sep. 18, 2014
  *  version Oct.  8, 2014
- * @version Jun. 17, 2015
+ *  version Jun. 17, 2015
+ *  version Aug. 19, 2018
+ * @version Sep. 30, 2018
  * @author  ASAMI, Tomoharu
  */
-trait Evaluator {
-  private val _stack = new Stack[Binding]
+trait Evaluator[C <: EvalContext] extends ConfigHelper {
+  def config: EvalConfig
 
-  protected def init_binding(binding: Binding) {
+  private val _stack = new Stack[Binding[C]]
+
+  protected def init_binding(binding: Binding[C]) {
     _stack.push(binding)
   }
 
+  protected def get_function[T](ctx: C): Option[LispFunction] = 
+    _stack.toStream.flatMap(_.getFunction(ctx)).headOption
+
+  def parse(in: CharSequence): SExpr = SExprParserNew(in)
+
+  def apply(expr: SExpr): C = {
+    log.debug(ExecuteLocation, StartAction, "apply", s"$expr")
+    val r: EvalContext = eval_to_context(expr).resolve
+    log.debug(ExecuteLocation, EndAction, "apply", s"$expr => $r")
+    lift_Eval_Context(r)
+  }
+
+  def applyLazy(expr: SExpr): C = {
+    log.debug(ExecuteLocation, StartAction, "apply", s"$expr")
+    val r: EvalContext = eval_to_context(expr)
+    log.debug(ExecuteLocation, EndAction, "apply", s"$expr => $r")
+    lift_Eval_Context(r)
+  }
+
   def eval(in: CharSequence): SExpr = {
-    eval(SExprParser(in))
+    eval(parse(in))
   }
 
   def eval(expr: SExpr): SExpr = {
-    // println("Evaluator#expr = " + expr)
-    expr match {
+    log.debug(ExecuteLocation, StartAction, "eval", s"$expr")
+    val a = expr match {
       case atom: SAtom => eval_atom(atom)
       case keyword: SKeyword => eval_keyword(keyword)
       case num: SNumber => eval_number(num)
+      case m: SRational => m
       case b: SBoolean => eval_boolean(b)
       case s: SString => eval_string(s)
       case xs: SList => eval_list(xs)
+      case m: SError => m
+      case m: SBinary => m
+      case m: SI18NString => m
+      case m: SI18NTemplate => m
+      case m: SRegex => m
+      case m: SDocument => m
+      case r: SRecord => eval_record(r)
+      case t: STable => eval_table(t)
+      case m: SMatrix => m
+      case m: SUrl => m
+      case m: SUrn => m
+      case m: SScript =>  eval_script(m)
+      case x: SXml => eval_xml(x)
+      case m: SHtml => m
+      case m: SXPath => m
+      case m: SXslt => m
+      case m: SPug => m
+      case j: SJson => eval_json(j)
+      case m: SExtension => eval_extension(m)
       case p: SPseudo => eval_pseudo(p)
     }
+    val r = a.resolve
+    log.debug(ExecuteLocation, EndAction, "eval", s"$expr => $r")
+    r
   }
 
   protected def eval_atom(atom: SAtom): SExpr = {
@@ -74,6 +120,32 @@ trait Evaluator {
     eval_list_to_context(xs).value
   }
 
+  protected def eval_record(p: SRecord): SExpr = p
+
+  protected def eval_table(p: STable): SExpr = p
+
+  protected def eval_matrix(p: SMatrix): SExpr = p
+
+  protected def eval_document(p: SDocument): SExpr = p
+
+  protected def eval_datetime(p: SDateTime): SExpr = p
+
+  protected def eval_localdate(p: SLocalDate): SExpr = p
+
+  protected def eval_localtime(p: SLocalTime): SExpr = p
+
+  protected def eval_url(p: SUrl): SExpr = p
+
+  protected def eval_urn(p: SUrn): SExpr = p
+
+  protected def eval_script(p: SScript): SExpr = p
+
+  protected def eval_xml(p: SXml): SExpr = p
+
+  protected def eval_json(p: SJson): SExpr = p
+
+  protected def eval_extension(p: SExtension): SExpr = p
+
   protected def eval_pseudo(pseudo: SPseudo): SExpr = {
     sys.error(s"Evaluator#eval_pseudo: $pseudo")
   }
@@ -94,7 +166,7 @@ trait Evaluator {
   }
 */
 
-  protected def eval_to_context(expr: SExpr): EvalContext = {
+  protected def eval_to_context(expr: SExpr): C = {
     expr match {
       case atom: SAtom => eval_atom_to_context(atom)
       case keyword: SKeyword => eval_keyword_to_context(keyword)
@@ -102,53 +174,148 @@ trait Evaluator {
       case b: SBoolean => eval_boolean_to_context(b)
       case s: SString => eval_string_to_context(s)
       case xs: SList => eval_list_to_context(xs)
+      case r: SRecord => eval_record_to_context(r)
+      case t: STable => eval_table_to_context(t)
+      case m: SMatrix => eval_matrix_to_context(m)
+      case m: SDocument => eval_document_to_context(m)
+      case m: SDateTime => eval_datetime_to_context(m)
+      case m: SLocalDate => eval_localdate_to_context(m)
+      case m: SLocalTime => eval_localtime_to_context(m)
+      case m: SUrl => eval_url_to_context(m)
+      case m: SUrn => eval_urn_to_context(m)
+      case m: SScript => eval_script_to_context(m)
+      case x: SXml => eval_xml_to_context(x)
+      case j: SJson => eval_json_to_context(j)
+      case m: SExtension => eval_extension_to_context(m)
       case p: SPseudo => eval_pseudo_to_context(p)
     }
   }
 
-  protected def eval_atom_to_context(atom: SAtom): EvalContext = {
+  protected def eval_atom_to_context(atom: SAtom): C = {
     create_Eval_Context(eval_atom(atom))
   }
 
-  protected def eval_keyword_to_context(keyword: SKeyword): EvalContext = {
+  protected def eval_keyword_to_context(keyword: SKeyword): C = {
     create_Eval_Context(eval_keyword(keyword))
   }
 
-  protected def eval_number_to_context(number: SNumber): EvalContext = {
+  protected def eval_number_to_context(number: SNumber): C = {
     create_Eval_Context(eval_number(number))
   }
 
-  protected def eval_boolean_to_context(boolean: SBoolean): EvalContext = {
+  protected def eval_boolean_to_context(boolean: SBoolean): C = {
     create_Eval_Context(eval_boolean(boolean))
   }
 
-  protected def eval_string_to_context(string: SString): EvalContext = {
+  protected def eval_string_to_context(string: SString): C = {
     create_Eval_Context(eval_string(string))
   }
 
-  protected def eval_pseudo_to_context(pseuedo: SPseudo): EvalContext = {
+  protected def eval_record_to_context(p: SRecord): C = {
+    create_Eval_Context(eval_record(p))
+  }
+
+  protected def eval_table_to_context(p: STable): C = {
+    create_Eval_Context(eval_table(p))
+  }
+
+  protected def eval_matrix_to_context(p: SMatrix): C = {
+    create_Eval_Context(eval_matrix(p))
+  }
+
+  protected def eval_document_to_context(p: SDocument): C = {
+    create_Eval_Context(eval_document(p))
+  }
+
+  protected def eval_datetime_to_context(p: SDateTime): C = {
+    create_Eval_Context(eval_datetime(p))
+  }
+
+  protected def eval_localdate_to_context(p: SLocalDate): C = {
+    create_Eval_Context(eval_localdate(p))
+  }
+
+  protected def eval_localtime_to_context(p: SLocalTime): C = {
+    create_Eval_Context(eval_localtime(p))
+  }
+
+  protected def eval_url_to_context(p: SUrl): C = {
+    create_Eval_Context(eval_url(p))
+  }
+
+  protected def eval_urn_to_context(p: SUrn): C = {
+    create_Eval_Context(eval_urn(p))
+  }
+
+  protected def eval_script_to_context(p: SScript): C = {
+    create_Eval_Context(eval_script(p))
+  }
+
+  protected def eval_xml_to_context(p: SXml): C = {
+    create_Eval_Context(eval_xml(p))
+  }
+
+  protected def eval_json_to_context(p: SJson): C = {
+    create_Eval_Context(eval_json(p))
+  }
+
+  protected def eval_extension_to_context(p: SExtension): C = {
+    create_Eval_Context(eval_extension(p))
+  }
+
+  protected def eval_pseudo_to_context(pseuedo: SPseudo): C = {
     create_Eval_Context(eval_pseudo(pseuedo))
   }
 
-  protected def eval_list_to_context(list: SList): EvalContext = {
-    val b = list.list
-    b.head match {
-      case atom: SAtom => {
-        val cs = b.tail.map(eval_to_context)
-        _stack.toStream.flatMap(_.function(atom)).headOption match {
-          case Some(f) => f(reduction_Context(cs))
-          case None => create_Eval_Context(list) // sys.error(s"Evaluator#eval_to_context: $list")
-        }
+  protected def eval_list_to_context(list: SList): C = list match {
+    case SNil => create_Eval_Context(SNil)
+    case SCell(car, cdr) => car match {
+      case atom: SAtom => cdr match {
+        case m: SList =>
+          _stack.toStream.flatMap(_.function(atom)).headOption match {
+            case Some(f) =>
+              if (is_control_function(atom))
+                _apply_function(f, m)
+              else
+                _eval_function(f, m)
+            case None =>
+              log.trace(s"No function: $atom") // TODO
+              log.trace(s"Stack: ${_stack}") // TODO
+              create_Eval_Context(list)
+          }
+        case m => throw new SyntaxErrorException(s"No list prameter: $m")
       }
-      case _ => create_Eval_Context(list) // sys.error(s"Evaluator#eval_to_context: $list")
+      case m => throw new SyntaxErrorException(s"No atom: $m")
     }
   }
 
-  protected def create_Eval_Context(x: SExpr): EvalContext
+  protected final def is_control_function(p: SAtom): Boolean = (
+    _stack.toStream.flatMap(_.isControlFunction(p)).headOption.getOrElse(false) ||
+      is_Control_Function(p)
+  )
 
-  protected def create_Eval_Context(xs: List[SExpr]): EvalContext
+  protected def is_Control_Function(p: SAtom): Boolean = false
 
-  protected def reduction_Context(xs: Seq[EvalContext]): EvalContext
+  private def _eval_function(f: C => C, p: SList) = {
+    val cs = p.list.map(eval_to_context)
+    val r = f(reduction_Context(cs))
+    // println(s"_eval_function: $r")
+    r
+  }
+
+  private def _apply_function(f: C => C, p: SList) = {
+    val r = f(create_Eval_Context(p))
+    // println(s"_apply_function: $r")
+    r
+  }
+
+  protected def lift_Eval_Context(p: EvalContext): C = p.asInstanceOf[C]
+
+  protected def create_Eval_Context(x: SExpr): C
+
+  protected def create_Eval_Context(xs: List[SExpr]): C
+
+  protected def reduction_Context(xs: Seq[C]): C
 
   // parameter
   // TODO unify SExprConverters
@@ -269,7 +436,7 @@ trait Evaluator {
   }
 }
 
-trait Binding {
+trait Binding[C <: EvalContext] {
   val binds = new HashMap[String, SExpr]
 
   def get(atom: SAtom): Option[SExpr] = {
@@ -278,5 +445,11 @@ trait Binding {
 
   protected def eval_Atom(name: String): Option[SExpr] = None
 
-  def function(atom: SAtom): Option[EvalContext => EvalContext]
+  def function(atom: SAtom): Option[C => C]
+
+  def isControlFunction(atom: SAtom): Option[Boolean] = is_Control_Function(atom)
+
+  protected def is_Control_Function(atom: SAtom): Option[Boolean] = None
+
+  def getFunction(ctx: C): Option[LispFunction] = None
 }

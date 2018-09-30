@@ -5,6 +5,7 @@ import scala.util.parsing.combinator.JavaTokenParsers
 import scala.collection.mutable.LinkedHashMap
 import scalax.io.JavaConverters._
 import com.asamioffice.goldenport.text.UString
+import org.goldenport.sexpr.eval.LogicalTokensReader
 
 /*
  * @since   Sep.  9, 2012
@@ -17,7 +18,9 @@ import com.asamioffice.goldenport.text.UString
  *  version Dec. 17, 2014
  *  version Feb.  6, 2015
  *  version Mar. 11, 2015
- * @version Mar. 10, 2016
+ *  version Mar. 10, 2016
+ *  version Aug. 30, 2018
+ * @version Sep.  9, 2018
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -32,6 +35,7 @@ object SExprParser extends JavaTokenParsers {
       parseAll(sexpr, in1) match {
         case Success(s, _) => _put_cache(in1, s); s
         case Failure(msg, in) => throw new IllegalArgumentException(s"$msg [${in.offset}]: ${in.rest.source}")
+        case Error(msg, in) => throw new IllegalArgumentException(s"$msg [${in.offset}]: ${in.rest.source}")
       }
     }
   }
@@ -58,6 +62,7 @@ object SExprParser extends JavaTokenParsers {
     parseAll(sexpr, in1) match {
       case Success(s, _) => s
       case Failure(msg, in) => throw new IllegalArgumentException(s"$msg [${in.offset}]: ${in.rest.source} in ${in.source}")
+      case Error(msg, in) => throw new IllegalArgumentException(s"$msg [${in.offset}]: ${in.rest.source} in ${in.source}")
     }
   }
 
@@ -96,7 +101,7 @@ object SExprParser extends JavaTokenParsers {
 
   def number: Parser[SNumber] = {
     wholeNumber ^^ {
-      case number => SNumber(number)
+      case number => SNumber(BigDecimal(number))
     }
   }
 
@@ -140,6 +145,167 @@ object SExprParser extends JavaTokenParsers {
     "(" ~> rep(sexpr) <~ ")" ^^ {
       case Nil => SNil
       case xs => xs.foldRight(SNil: SList)((x, a) => SCell(x, a))
+    }
+  }
+}
+
+import scala.util.parsing.combinator.Parsers
+import scala.util.parsing.input._
+
+object SExprParserNew extends Parsers {
+  import org.goldenport.parser._
+  import org.goldenport.parser.XmlParser.XmlToken
+  import org.goldenport.parser.JsonParser.JsonToken
+
+  type Elem = LogicalToken
+
+  def apply(reader: Reader): SExpr = apply(reader.asReadChars.string)
+
+  def apply(in: CharSequence): SExpr = {
+    // println(s"apply $in")
+    parse(LogicalTokens.parse(in.toString))
+  }
+
+  def parse(in: LogicalTokens): SExpr = {
+    // println(s"parse $in")
+    val reader = LogicalTokensReader(in)
+    // println(reader)
+    sexpr(reader) match {
+      case Success(s, _) => s
+      case Failure(msg, in) => throw new IllegalArgumentException(s"$msg")
+      case Error(msg, in) => throw new IllegalArgumentException(s"$msg")
+    }
+  }
+
+  def sexpr: Parser[SExpr] = nil | list | number | boolean | string | keyword | atom | xml | json
+
+  def nil = new Parser[SList] {
+    def apply(in: Input) = {
+      in.first match {
+        case AtomToken(s, _) if s == "nil" => Success(SNil, in.rest)
+        case m => Failure(s"not nil: $m", in.rest)
+      }
+    }
+  }
+
+  def list = list0 | listn
+
+  def list0: Parser[SList] = {
+    open ~> space.* <~ close ^^ {
+      case _ => SNil
+    }
+  }
+
+  def listn: Parser[SList] = {
+    open ~ space.? ~> sexpr ~ delimiter_sexpr.* <~ space.? ~ close ^^ {
+      case head ~ tail => SList.create(head +: tail)
+    }
+  }
+
+  def delimiter_sexpr: Parser[SExpr] = {
+    space ~> sexpr ^^ {
+      case s => s
+    }
+  }
+
+  // def delimiter_sexpr: Parser[SExpr] = {
+  //   space.* ~ delimiter.? ~ space.* ~> sexpr ^^ {
+  //     case s => s
+  //   }
+  // }
+
+  protected def space = new Parser[SPseudo] {
+    def apply(in: Input) = in.first match {
+      case m: SpaceToken => Success(SSpace, in.rest)
+      case m => Failure(s"not space: $m", in.rest)
+    }
+  }
+
+  protected def delimiter = new Parser[SPseudo] {
+    def apply(in: Input) = in.first match {
+      case DelimiterToken(",", _) => Success(SDelimiter, in.rest)
+      case m => Failure(s"not delimiter: $m", in.rest)
+    }
+  }
+
+  protected def open = new Parser[SPseudo] {
+    def apply(in: Input) = {
+      in.first match {
+        case DelimiterToken("(", _) => Success(SOpen, in.rest)
+        case _ => Failure("not open", in.rest)
+      }
+    }
+  }
+
+  protected def close = new Parser[SPseudo] {
+    def apply(in: Input) = {
+      in.first match {
+        case DelimiterToken(")", _) => Success(SClose, in.rest)
+        case m => Failure(s"not close: $m", in.rest)
+      }
+    }
+  }
+
+  def number = new Parser[SNumber] {
+    def apply(in: Input) = {
+      in.first match {
+        case NumberToken(n, _) => Success(SNumber(n), in.rest)
+        case m => Failure(s"not number: $m", in.rest)
+      }
+    }
+  }
+
+  def boolean = new Parser[SBoolean] {
+    def apply(in: Input) = {
+      in.first match {
+        case BooleanToken(n, _) => Success(SBoolean(n), in.rest)
+        case m => Failure(s"not boolean: $m", in.rest)
+      }
+    }
+  }
+
+  def string = new Parser[SString] {
+    def apply(in: Input) = {
+      in.first match {
+        case m: StringToken => Success(SString(m.text), in.rest)
+        case m => Failure(s"not string: $m", in.rest)
+      }
+    }
+  }
+
+  def keyword = new Parser[SKeyword] {
+    def apply(in: Input) = {
+      in.first match {
+        case AtomToken(k, _) if k.startsWith(":") => Success(SKeyword(k), in.rest)
+        case m => Failure(s"not keyword: $m", in.rest)
+      }
+    }
+  }
+
+  def atom = new Parser[SAtom] {
+    def apply(in: Input) = {
+      in.first match {
+        case AtomToken(s, _) => Success(SAtom(s), in.rest)
+        case m => Failure(s"not atom: $m", in.rest)
+      }
+    }
+  }
+
+  def xml = new Parser[SXml] {
+    def apply(in: Input) = {
+      in.first match {
+        case XmlToken(j, _) => Success(SXml(j), in.rest)
+        case m => Failure(s"not xml: $m", in.rest)
+      }
+    }
+  }
+
+  def json = new Parser[SJson] {
+    def apply(in: Input) = {
+      in.first match {
+        case JsonToken(j, _) => Success(SJson(j), in.rest)
+        case m => Failure(s"not json: $m", in.rest)
+      }
     }
   }
 }
