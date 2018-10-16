@@ -2,9 +2,9 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "2.0.2"
+version := "2.1.0-SNAPSHOT"
 
-scalaVersion := "2.11.6"
+scalaVersion := "2.12.7"
 
 crossScalaVersions := Seq("2.11.6", "2.10.5")
 
@@ -16,9 +16,9 @@ incOptions := incOptions.value.withNameHashing(true)
 
 resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "2.0.1"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "2.1.0-SNAPSHOT"
 
-libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.4" % "test"
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % "test"
 
 libraryDependencies += "junit" % "junit" % "4.12" % "test"
 
