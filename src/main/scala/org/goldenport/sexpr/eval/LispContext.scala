@@ -5,15 +5,18 @@ import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
 import javax.script.ScriptEngineManager
 import org.goldenport.RAISE
-import org.goldenport.record.v3.Record
+import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.unitofwork.interpreter.{UnitOfWorkLogic, StoreOperationLogic}
 import org.goldenport.record.http.Response
 import org.goldenport.log.LogMark._
+import org.goldenport.cli.ShellCommand
 import org.goldenport.sexpr._
 
 /*
  * @since   Sep. 15, 2018
- * @version Sep. 29, 2018
+ *  version Sep. 29, 2018
+ *  version Oct. 17, 2018
+ * @version Feb. 11, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ScriptEnginePart {
@@ -53,18 +56,19 @@ trait LispContext extends EvalContext with ScriptEnginePart {
   def reductForApply: LispContext = ???
 
   override def toResult(expr: SExpr): LispContext = toResult(expr, Record.empty)
-  override def toResult(expr: SExpr, bindings: Record): LispContext
+  override def toResult(expr: SExpr, bindings: IRecord): LispContext
 
   override def toResult(p: Response): LispContext = toResult(toSExpr(p))
 
   def pop: LispContext = RAISE.unsupportedOperationFault
+  def getPipelineIn: Option[SExpr] = None
 
-  val futureDuration = 10.minutes
+  val futureDuration = 10.minutes // TODO customizable
 
-  def future(p: LispFunction): Future[LispContext] = Future {
+  def futureForEval(p: LispFunction): Future[LispContext] = Future {
     try {
       log.debug(ThreadLocation, StartAction, "future", p.name)
-      val r = p(this)
+      val r = p(this.reductForEval)
       log.debug(ThreadLocation, EndAction, "future", s"${p.name} => $r")
       r
     } catch {
@@ -73,9 +77,30 @@ trait LispContext extends EvalContext with ScriptEnginePart {
         toResult(SError(e))
     }
   }
+
+  def future(label: String, body: () => LispContext): Future[LispContext] = Future {
+    try {
+      log.debug(ThreadLocation, StartAction, "future", label)
+      val r = body()
+      log.debug(ThreadLocation, EndAction, "future", s"${label} => $r")
+      r
+    } catch {
+      case e: Throwable =>
+        log.error(ThreadLocation, EndErrorAction, "future", label, e)
+        toResult(SError(e))
+    }
+  }
+
   def wait(p: Future[LispContext]): LispContext = Await.result(p, futureDuration)
 
-  
+  def withUnavailableFunction(p: String) = this // TODO
+
+  def isShellCommand(p: String): Boolean = ShellCommand.run(s"type $p")
+
+  def isUnavailableFunction(p: String): Boolean = false
+
+  def createDynamicServiceFunction(name: String): DynamicServiceFunction =
+    DynamicServiceFunction.create(name)
 }
 object LispContext {
   val scriptContext = new ScriptEngineManager()
@@ -103,9 +128,9 @@ object LispContext {
     storeLogic: StoreOperationLogic,
     scriptContext: ScriptEngineManager,
     value: SExpr,
-    bindings: Record
+    bindings: IRecord
   ) extends LispContext {
     def pure(p: SExpr) = copy(value = p)
-    def toResult(p: SExpr, b: Record) = copy(value = p, bindings = bindings + b)
+    def toResult(p: SExpr, b: IRecord) = copy(value = p, bindings = bindings + b)
   }
 }

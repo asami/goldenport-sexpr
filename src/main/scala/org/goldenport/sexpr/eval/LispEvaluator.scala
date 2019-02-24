@@ -9,7 +9,9 @@ import org.goldenport.sexpr._
  * @since   Aug.  8, 2013
  *  version Feb. 27, 2014
  *  version Aug. 20, 2018
- * @version Sep. 29, 2018
+ *  version Sep. 29, 2018
+ *  version Oct. 30, 2018
+ * @version Feb. 17, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -24,16 +26,16 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   // def pure(p: SExpr) = create_Eval_Context(p)
 
   def apply(c: LispContext): LispContext = {
-    log.debug(ExecuteLocation, StartAction, "apply", s"$c")
+    log_start_debug("apply", s"$c")
     val r = apply_context(c).resolve
-    log.debug(ExecuteLocation, EndAction, "apply", s"$c => $r")
+    log_end_debug("apply", s"$c => $r")
     lift_Context(r)
   }
 
   def applyLazy(c: LispContext): LispContext = {
-    log.debug(ExecuteLocation, StartAction, "applyLazy", s"$c")
+    log_start_debug("applyLazy", s"$c")
     val r = apply_context(c)
-    log.debug(ExecuteLocation, EndAction, "applyLazy", s"$c => $r")
+    log_end_debug("applyLazy", s"$c => $r")
     lift_Context(r)
   }
 
@@ -43,7 +45,7 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
       getOrElse(eval_context(c))
 
   protected def apply_function(c: LispContext, f: LispFunction): LispContext = {
-    c.log.trace(s"apply_functionx(${f.name}: ${c.value}")
+    c.log.trace(s"apply_function(${f.name}: ${c.value}")
     val r = f match {
       case m: EvalFunction => _eval_function(c, m)
       case m: ControlFunction => m.apply(c)
@@ -51,14 +53,14 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
       case m: HeavyFunction => c.toResult(SLazy(c, m))
       case m => _eval_function(c, m)
     }
-    c.log.trace(s"apply_functionx(${f.name}: ${c.value}")
+    c.log.trace(s"apply_function(${f.name}: ${c.value}")
     r
   }
 
   private def _eval_function(c: LispContext, f: LispFunction): LispContext = {
     val a = c.reductForEval
     if (_is_lazy(a.value))
-      c.toResult(SLazy(c, f))
+      c.toResult(SLazy(c, f)) // ??? a
     else
       f(a)
   }
@@ -94,9 +96,15 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   binds.put("nil", SNil)
 
   private lazy val _functions: Vector[LispFunction] = {
-    import EvalFunction._
-    Vector(Car, And, Or, Plus, Length, Pop, Fetch, HttpGet)
+    import LispFunction._
+    Vector(
+      Car, Quote, And, Or, Plus, Length, Pop, PathGet, Transform, Fetch,
+      HttpGet, HttpPost, HttpPut, HttpDelete,
+      MatrixLoad, MatrixChart, TableLoad, TableChart
+    )
   }
+
+  protected def functions_Pf: PartialFunction[C,LispFunction] = Map.empty
 
   // private val _control_functions = Vector("and", "or")
 
@@ -104,7 +112,28 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   //   Some(_control_functions.contains(p.name))
 
   override def getFunction(c: C): Option[LispFunction] =
-    _functions.toStream.filter(_.isDefinedAt(c)).headOption
+    _functions.toStream.filter(_.isDefinedAt(c)).headOption.orElse(
+      functions_Pf.lift(c)).
+      orElse(quote_function(c)).
+      orElse(dynamic_service_function(c))
+
+  protected def quote_function(c: C): Option[LispFunction] =
+    c.value match {
+      case SCell(SSingleQuote(), _) =>
+        Some(LispFunction.Quote)
+      case _ => None
+    }
+
+  protected def dynamic_service_function(c: C): Option[LispFunction] = {
+    c.value match {
+      case SCell(SAtom(name), _) =>
+        if (c.isUnavailableFunction(name))
+          None
+        else
+          Some(c.createDynamicServiceFunction(name))
+      case _ => None
+    }
+  }
 
   def getFunction(p: String): Option[LispFunction] =
     _functions.toStream.find(_.name == p)
@@ -175,6 +204,16 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   // })
 }
 object LispBinding {
+  def initialize() {
+    import play.api.libs.json.JsValue
+    import org.apache.commons.jxpath.JXPathIntrospector
+    import org.goldenport.json.JsonDynamicPropertyHandler
+    import org.goldenport.extension._
+
+    JXPathIntrospector.registerDynamicClass(classOf[IRecord], classOf[RecordDynamicPropertyHandler])
+    JXPathIntrospector.registerDynamicClass(classOf[JsValue], classOf[JsonDynamicPropertyHandler])
+  }
+
   def apply(): LispBinding[LispContext] = new LispBinding[LispContext]() {
   }
 }

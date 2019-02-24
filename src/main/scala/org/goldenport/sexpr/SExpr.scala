@@ -1,15 +1,18 @@
 package org.goldenport.sexpr
 
 import scala.concurrent.Future
-import java.net.URL
+import java.net.{URL, URI}
 import org.joda.time._
 import play.api.libs.json.{JsValue, Json}
 import org.goldenport.RAISE
 import org.goldenport.Strings
 import org.goldenport.i18n.{I18NString, I18NTemplate}
-import org.goldenport.record.v3.{IRecord, ITable}
+import org.goldenport.matrix.IMatrix
+import org.goldenport.table.ITable
+import org.goldenport.record.v3.{IRecord}
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.values.Urn
+import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource}
 import org.goldenport.bag.ChunkBag
 import org.goldenport.xml.dom.DomParser
 import org.goldenport.sexpr.eval.{LispContext, LispFunction}
@@ -26,7 +29,10 @@ import org.goldenport.sexpr.eval.{LispContext, LispFunction}
  *  version Mar. 11, 2015
  *  version May. 23, 2015
  *  version Aug. 19, 2018
- * @version Sep. 29, 2018
+ *  version Sep. 29, 2018
+ *  version Oct. 28, 2018
+ *  version Jan.  3, 2019
+ * @version Feb. 24, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -35,11 +41,15 @@ sealed trait SExpr {
   //  def asNumber: SNumber = RAISE.unsupportedOperationFault(s"Not number(${this})")
   def getString: Option[String] = None
   def asString: String = getString getOrElse RAISE.unsupportedOperationFault(s"Not string(${this})")
+  def asInt: Int = RAISE.unsupportedOperationFault(s"Not number(${this})")
   def asBigDecimal: BigDecimal = RAISE.unsupportedOperationFault(s"Not number(${this})")
   def asUrl: URL = getString.map(new URL(_)).getOrElse(RAISE.unsupportedOperationFault(s"Not URL(${this})"))
+  def asUri: URI = getString.map(new URI(_)).getOrElse(RAISE.unsupportedOperationFault(s"Not URI(${this})"))
+  def getInputSource: Option[InputSource] = getString.map(StringInputSource(_))
   def resolve: SExpr = this
-  def print: String // full representation
+  def print: String // interaction representation (e.g. REPL)
   def show: String // for debug
+  def detail: String = show
 
   protected final def cut_string(p: String) = Strings.cutstring(p, 32)
 }
@@ -47,6 +57,9 @@ sealed trait SExpr {
 case class SAtom(name: String) extends SExpr {
   def print = name
   def show = name
+}
+object SAtom {
+  val quote = SAtom("quote")
 }
 
 case class SKeyword(name: String) extends SExpr {
@@ -94,6 +107,12 @@ case class SRational(number: spire.math.Rational) extends SExpr {
   def show = number.toString
 }
 
+case class SComplex(number: spire.math.Complex[BigDecimal]) extends SExpr {
+  override lazy val asString = number.toString
+  def print = show
+  def show = number.toString
+}
+
 case class SBoolean(value: Boolean) extends SExpr {
   override def isNilOrFalse = !value
   def print = show
@@ -117,8 +136,9 @@ object SBoolean {
 
 case class SString(string: String) extends SExpr {
   override def toString() = s"SString($show)"
+  override def getString = Some(string)
   override def asString = string
-  lazy val print = SExpr.toStringLiteral(string)
+  lazy val print = string
   lazy val show = SExpr.toStringLiteral(cut_string(string))
 }
 
@@ -129,7 +149,7 @@ sealed trait SList extends SExpr {
   lazy val vector: Vector[SExpr] = Vector.empty
   def append(p: SList): SList
   def append(p: List[SExpr]): SList
-  def print = list.map(_.print).mkString("(", " ", ")")
+  def print = list.map(_.show).mkString("(", " ", ")")
   def show = list.map(_.show).mkString("(", " ", ")")
 }
 
@@ -180,10 +200,26 @@ object SError {
   def apply(req: Request, e: Throwable): SError = SError(None, Some(e), Some(req), None)
   def apply(req: Request, res: Response): SError = SError(None, None, Some(req), Some(res))
   def apply(p: Response): SError = SError(None, None, None, Some(p))
+  def functionNotFound(name: String): SError = {
+    val label = s"Function '$name' is not found."
+    SError(Some(label), None, None, None)
+  }
+}
+
+case class SMetaCommand(command: String, args: List[String]) extends SExpr {
+  def print = show
+  def show = toString
+}
+object SMetaCommand {
+  def apply(p: String): SMetaCommand = Strings.totokens(p) match {
+    case Nil => SMetaCommand("help", Nil)
+    case x :: xs => SMetaCommand(x, xs)
+  }
 }
 
 trait IDocument extends IRecord
-trait IMatrix
+trait IProcess
+// trait IMatrix
 // trait IPath
 // trait IScript
 
@@ -211,6 +247,11 @@ case class SRegex(regex: scala.util.matching.Regex) extends SExpr {
   def show = regex.toString
 }
 
+case class SBag(bag: ChunkBag) extends SExpr {
+  def print = bag.toText
+  def show = "Bag()"
+}
+
 case class SDocument(document: IDocument) extends SExpr { // Bean
   def print = show
   def show = document.toString
@@ -226,7 +267,7 @@ case class STable(table: ITable) extends SExpr {
   def show = table.toString
 }
 
-case class SMatrix(matrix: IMatrix) extends SExpr {
+case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
   def print = show
   def show = matrix.toString
 }
@@ -234,12 +275,15 @@ case class SMatrix(matrix: IMatrix) extends SExpr {
 case class SUrl(url: java.net.URL) extends SExpr {
   override lazy val asString = url.toString
   override def asUrl = url
+  override def asUri = url.toURI
+  override def getInputSource = Some(UrlInputSource(url))
   def print = show
   def show = url.toString
 }
 
 case class SUrn(urn: Urn) extends SExpr {
   override lazy val asString = urn.toString
+  override def asUri = urn.toURI
   def print = show
   def show = urn.toString
 }
@@ -251,6 +295,16 @@ case class SScript(language: Option[String], text: String) extends SExpr {
 }
 object SScript {
   def apply(p: String): SScript = SScript(None, p)
+}
+
+case class SProcess(process: IProcess) extends SExpr {
+  def print = show
+  def show = toString
+}
+
+case class SSingleQuote() extends SExpr {
+  def print = show
+  def show = "SingleQuote()"
 }
 
 case class SObject(o: AnyRef) extends SExpr {
@@ -280,14 +334,13 @@ case class SXPath(path: String) extends SExpr {
   override def asString = path
   def print = path
   def show = s"XPath($path)"
-  lazy val jxpath = ???
 }
 
 case class SXslt(xslt: String) extends SExpr {
   override def asString = xslt
   def print = xslt
   def show = s"XSLT(${cut_string(xslt)})"
-  lazy val dom = ???
+  lazy val dom: org.w3c.dom.Node = ???
 }
 
 case class SPug(pug: String) extends SExpr {
@@ -325,6 +378,14 @@ case class SLocalDate(date: LocalDate) extends SExpr {
 case class SLocalTime(time: LocalTime) extends SExpr {
   def print = show
   def show = time.toString
+}
+
+case class SMonthDay(monthday: MonthDay) extends SExpr {
+  def print = show
+  def show = monthday.toString // ISO8601 (e.g. --05-06)
+
+  def month: Int = monthday.getMonthOfYear
+  def day: Int = monthday.getDayOfMonth
 }
 
 case class SInterval(interval: Interval) extends SExpr {
@@ -366,9 +427,9 @@ trait SControl extends SExpr {
 }
 
 case class SFuture(c: LispContext, f: LispFunction) extends SControl {
-  def print = show
-  def show = "SFuture"
-  private lazy val _future = c.future(f)
+  def print = show // TODO
+  def show = s"SFuture(${f.name})"
+  private lazy val _future = c.futureForEval(f)
   def start(): SFuture = {
     _future
     this
@@ -377,15 +438,36 @@ case class SFuture(c: LispContext, f: LispFunction) extends SControl {
 }
 
 case class SLazy(c: LispContext, f: LispFunction) extends SControl {
-  def print = show
-  def show = "SLazy"
+  def print = show // TODO
+  def show = s"SLazy(${f.name})"
   def resolveContext: LispContext = f(c)
 }
 
-case class SLazyFuture() extends SControl {
-  def print = show
-  def show = "SLazyFuture"
+case class SLazyFuture(label: String) extends SControl {
+  def print = show // TODO
+  def show = s"SLazyFuture($label)"
   def resolveContext: LispContext = RAISE.notImplementedYetDefect
+}
+
+case class SWait(label: String, body: () => LispContext) extends SControl {
+  def print = show // TODO
+  def show = s"SWait($label)"
+  def resolveContext: LispContext = body()
+}
+
+case class SFutureWait(label: String, c: LispContext, body: () => LispContext) extends SControl {
+  def print = show // TODO
+  def show = s"SFutureWait($label)"
+  private lazy val _future = c.future(label, body)
+  def start(): SFutureWait = {
+    _future
+    this
+  }
+  def resolveContext: LispContext = c.wait(_future)
+}
+object SFutureWait {
+  def create(label: String, c: LispContext)(body: => LispContext): SFutureWait =
+    SFutureWait(label, c, () => body)
 }
 
 trait SPseudo extends SExpr
@@ -409,6 +491,7 @@ case object SDelimiter extends SPseudo { // Special delimiter ','
 
 object SExpr {
   def create(p: Any): SExpr = p match {
+    case m: SExpr => m
     case m: Boolean => SBoolean.create(m)
     case m: Byte => SNumber(m)
     case m: Short => SNumber(m)
@@ -417,7 +500,7 @@ object SExpr {
     case m: Float => SNumber(m)
     case m: Double => SNumber(m)
     case m: String => SString(m)
-    case m: AnyRef => SObject(m)
+    case m: AnyRef => SObject(m) // TODO
   }
 
   def getKeyword[T](expr: SExpr, keyword: String)(implicit pf: PartialFunction[SExpr, T]): Option[T] = {

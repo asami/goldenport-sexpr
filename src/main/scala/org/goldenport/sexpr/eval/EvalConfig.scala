@@ -8,7 +8,7 @@ import org.goldenport.record.http.{Response, StringResponse, BinaryResponse}
 
 /*
  * @since   Sep. 16, 2018
- * @version Sep. 18, 2018
+ * @version Feb. 16, 2019
  * @author  ASAMI, Tomoharu
  */
 trait EvalConfig extends Config {
@@ -27,8 +27,8 @@ trait EvalConfig extends Config {
   def toSExpr(p: Response): SExpr = {
     p match {
       case m: StringResponse =>
-        println(s"toSExpr: ${m.mime}")
-        println(s"toSExpr2: ${mimeSExprByString.get(m.mime)}")
+        // println(s"toSExpr: ${m.mime}")
+        // println(s"toSExpr2: ${mimeSExprByString.get(m.mime)}")
       case m: BinaryResponse => ???
     }
     to_sexpr(p)

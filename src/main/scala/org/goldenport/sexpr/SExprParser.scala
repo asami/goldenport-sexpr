@@ -20,7 +20,8 @@ import org.goldenport.sexpr.eval.LogicalTokensReader
  *  version Mar. 11, 2015
  *  version Mar. 10, 2016
  *  version Aug. 30, 2018
- * @version Sep.  9, 2018
+ *  version Sep.  9, 2018
+ * @version Feb. 16, 2019
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -163,11 +164,11 @@ object SExprParserNew extends Parsers {
 
   def apply(in: CharSequence): SExpr = {
     // println(s"apply $in")
-    parse(LogicalTokens.parse(in.toString))
+    parse(LogicalTokens.parseSexpr(in.toString))
   }
 
   def parse(in: LogicalTokens): SExpr = {
-    // println(s"parse $in")
+    // println(s"SExprParserNew#parse $in")
     val reader = LogicalTokensReader(in)
     // println(reader)
     sexpr(reader) match {
@@ -177,13 +178,13 @@ object SExprParserNew extends Parsers {
     }
   }
 
-  def sexpr: Parser[SExpr] = nil | list | number | boolean | string | keyword | atom | xml | json
+  def sexpr: Parser[SExpr] = nil | list | number | boolean | string | keyword | atom | quote | xml | json | unknown
 
   def nil = new Parser[SList] {
     def apply(in: Input) = {
       in.first match {
         case AtomToken(s, _) if s == "nil" => Success(SNil, in.rest)
-        case m => Failure(s"not nil: $m", in.rest)
+        case m => Failure(s"Not nil: $m", in.rest)
       }
     }
   }
@@ -217,14 +218,14 @@ object SExprParserNew extends Parsers {
   protected def space = new Parser[SPseudo] {
     def apply(in: Input) = in.first match {
       case m: SpaceToken => Success(SSpace, in.rest)
-      case m => Failure(s"not space: $m", in.rest)
+      case m => Failure(s"Not space: $m", in.rest)
     }
   }
 
   protected def delimiter = new Parser[SPseudo] {
     def apply(in: Input) = in.first match {
       case DelimiterToken(",", _) => Success(SDelimiter, in.rest)
-      case m => Failure(s"not delimiter: $m", in.rest)
+      case m => Failure(s"Not delimiter: $m", in.rest)
     }
   }
 
@@ -232,7 +233,7 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case DelimiterToken("(", _) => Success(SOpen, in.rest)
-        case _ => Failure("not open", in.rest)
+        case _ => Failure("Not open", in.rest)
       }
     }
   }
@@ -241,7 +242,7 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case DelimiterToken(")", _) => Success(SClose, in.rest)
-        case m => Failure(s"not close: $m", in.rest)
+        case m => Failure(s"Not close: $m", in.rest)
       }
     }
   }
@@ -250,7 +251,7 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case NumberToken(n, _) => Success(SNumber(n), in.rest)
-        case m => Failure(s"not number: $m", in.rest)
+        case m => Failure(s"Not number: $m", in.rest)
       }
     }
   }
@@ -259,7 +260,7 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case BooleanToken(n, _) => Success(SBoolean(n), in.rest)
-        case m => Failure(s"not boolean: $m", in.rest)
+        case m => Failure(s"Not boolean: $m", in.rest)
       }
     }
   }
@@ -268,7 +269,7 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case m: StringToken => Success(SString(m.text), in.rest)
-        case m => Failure(s"not string: $m", in.rest)
+        case m => Failure(s"Not string: $m", in.rest)
       }
     }
   }
@@ -277,7 +278,7 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case AtomToken(k, _) if k.startsWith(":") => Success(SKeyword(k), in.rest)
-        case m => Failure(s"not keyword: $m", in.rest)
+        case m => Failure(s"Not keyword: $m", in.rest)
       }
     }
   }
@@ -286,7 +287,22 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case AtomToken(s, _) => Success(SAtom(s), in.rest)
-        case m => Failure(s"not atom: $m", in.rest)
+        case m => Failure(s"Not atom: $m", in.rest)
+      }
+    }
+  }
+
+  def quote = {
+    single_quote ~> sexpr ^^ {
+      case sexpr => SList(SAtom.quote, sexpr)
+    }
+  }
+
+  def single_quote = new Parser[SAtom] {
+    def apply(in: Input) = {
+      in.first match {
+        case m: SingleQuoteToken => Success(SAtom.quote, in.rest)
+        case m => Failure(s"Not quote: $m", in.rest)
       }
     }
   }
@@ -295,7 +311,7 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case XmlToken(j, _) => Success(SXml(j), in.rest)
-        case m => Failure(s"not xml: $m", in.rest)
+        case m => Failure(s"Not xml: $m", in.rest)
       }
     }
   }
@@ -304,8 +320,14 @@ object SExprParserNew extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case JsonToken(j, _) => Success(SJson(j), in.rest)
-        case m => Failure(s"not json: $m", in.rest)
+        case m => Failure(s"Not json: $m", in.rest)
       }
+    }
+  }
+
+  def unknown = new Parser[SExpr] {
+    def apply(in: Input) = in.first match {
+      case m => Failure(s"Unknown token: $m", in.rest)
     }
   }
 }

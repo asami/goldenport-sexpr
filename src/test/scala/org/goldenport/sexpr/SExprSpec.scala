@@ -12,7 +12,9 @@ import org.junit.runner.RunWith
  *  version Feb.  4, 2014
  *  version Dec. 17, 2014
  *  version Mar. 11, 2015
- * @version Sep. 16, 2018
+ *  version Sep. 16, 2018
+ *  version Jan. 27, 2019
+ * @version Feb.  3, 2019
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -70,6 +72,12 @@ class SExprSpec extends WordSpec with Matchers {
         var s = SExprParser("""(:k ("value1" "value2"))""")
         var v = SExpr.getKeyword[List[String]](s, "k")
         v should equal (Some(List("value1", "value2")))
+      }
+    }
+    "quote" which {
+      "typical" in {
+        val s = SExprParserNew("'a") // currently SExprParser does not support the quote feature.
+        s should equal (SList(SAtom.quote, SAtom("a")))
       }
     }
   }

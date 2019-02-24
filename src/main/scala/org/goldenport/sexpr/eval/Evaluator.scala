@@ -1,8 +1,7 @@
 package org.goldenport.sexpr.eval
 
 import scala.collection.mutable.{Stack, HashMap}
-import org.goldenport.config.ConfigHelper
-import org.goldenport.log.LogMark, LogMark._
+import org.goldenport.log.{LogMark, Loggable}, LogMark._
 import org.goldenport.sexpr._
 
 /*
@@ -15,11 +14,13 @@ import org.goldenport.sexpr._
  *  version Oct.  8, 2014
  *  version Jun. 17, 2015
  *  version Aug. 19, 2018
- * @version Sep. 30, 2018
+ *  version Sep. 30, 2018
+ *  version Oct. 21, 2018
+ * @version Feb. 24, 2019
  * @author  ASAMI, Tomoharu
  */
-trait Evaluator[C <: EvalContext] extends ConfigHelper {
-  def config: EvalConfig
+trait Evaluator[C <: EvalContext] extends Loggable {
+  override protected def log_Location = InterpreterLocation
 
   private val _stack = new Stack[Binding[C]]
 
@@ -33,16 +34,16 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
   def parse(in: CharSequence): SExpr = SExprParserNew(in)
 
   def apply(expr: SExpr): C = {
-    log.debug(ExecuteLocation, StartAction, "apply", s"$expr")
+    log_start_debug("apply", s"$expr")
     val r: EvalContext = eval_to_context(expr).resolve
-    log.debug(ExecuteLocation, EndAction, "apply", s"$expr => $r")
+    log_end_debug("apply", s"$expr => $r")
     lift_Eval_Context(r)
   }
 
   def applyLazy(expr: SExpr): C = {
-    log.debug(ExecuteLocation, StartAction, "apply", s"$expr")
+    log_start_debug("apply", s"$expr")
     val r: EvalContext = eval_to_context(expr)
-    log.debug(ExecuteLocation, EndAction, "apply", s"$expr => $r")
+    log_start_debug("apply", s"$expr => $r")
     lift_Eval_Context(r)
   }
 
@@ -51,7 +52,7 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
   }
 
   def eval(expr: SExpr): SExpr = {
-    log.debug(ExecuteLocation, StartAction, "eval", s"$expr")
+    log_start_debug("eval", s"$expr")
     val a = expr match {
       case atom: SAtom => eval_atom(atom)
       case keyword: SKeyword => eval_keyword(keyword)
@@ -80,21 +81,29 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
       case j: SJson => eval_json(j)
       case m: SExtension => eval_extension(m)
       case p: SPseudo => eval_pseudo(p)
+      case m => m
     }
     val r = a.resolve
-    log.debug(ExecuteLocation, EndAction, "eval", s"$expr => $r")
+    log_end_debug("eval", s"$expr => $r")
     r
   }
 
   protected def eval_atom(atom: SAtom): SExpr = {
-    if (_stack.isEmpty) throw new IllegalStateException("Stack should be pushed init binding.")
+    if (_stack.isEmpty)
+      throw new IllegalStateException("Stack should be pushed init binding.")
+    eval_Atom(atom) getOrElse _eval_atom(atom)
+  }
+
+  protected def eval_Atom(atom: SAtom): Option[SExpr] = None
+
+  private def _eval_atom(atom: SAtom): SExpr = {
     _stack.toStream.flatMap(_.get(atom)).headOption match {
       case Some(s) => s
       case None => {
         val cs = Vector(create_Eval_Context(Nil))
         _stack.toStream.flatMap(_.function(atom)).headOption match {
           case Some(f) => f(reduction_Context(cs)).value
-          case None => atom // in case of not binding, return the atom itself.
+          case None => atom // TODO error
         }
       }
     }
@@ -144,6 +153,8 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
 
   protected def eval_json(p: SJson): SExpr = p
 
+  protected def eval_xpath(p: SXPath): SExpr = p
+
   protected def eval_extension(p: SExtension): SExpr = p
 
   protected def eval_pseudo(pseudo: SPseudo): SExpr = {
@@ -186,8 +197,10 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
       case m: SScript => eval_script_to_context(m)
       case x: SXml => eval_xml_to_context(x)
       case j: SJson => eval_json_to_context(j)
+      case m: SXPath => eval_xpath_to_context(m)
       case m: SExtension => eval_extension_to_context(m)
       case p: SPseudo => eval_pseudo_to_context(p)
+      case m => create_Eval_Context(m)
     }
   }
 
@@ -259,6 +272,12 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
     create_Eval_Context(eval_json(p))
   }
 
+  protected def eval_xpath_to_context(p: SXPath): C = {
+    val r = create_Eval_Context(eval_xpath(p))
+    // println("X: $r")
+    r
+  }
+
   protected def eval_extension_to_context(p: SExtension): C = {
     create_Eval_Context(eval_extension(p))
   }
@@ -279,8 +298,8 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
               else
                 _eval_function(f, m)
             case None =>
-              log.trace(s"No function: $atom") // TODO
-              log.trace(s"Stack: ${_stack}") // TODO
+              log_trace(s"No function: $atom") // TODO
+              log_trace(s"Stack: ${_stack}") // TODO
               create_Eval_Context(list)
           }
         case m => throw new SyntaxErrorException(s"No list prameter: $m")
@@ -296,16 +315,18 @@ trait Evaluator[C <: EvalContext] extends ConfigHelper {
 
   protected def is_Control_Function(p: SAtom): Boolean = false
 
-  private def _eval_function(f: C => C, p: SList) = {
+  private def _eval_function(f: C => C, p: SList): C = {
+    // println(s"_eval_function: $p")
     val cs = p.list.map(eval_to_context)
     val r = f(reduction_Context(cs))
-    // println(s"_eval_function: $r")
+    // println(s"_eval_function: $p => $r")
     r
   }
 
-  private def _apply_function(f: C => C, p: SList) = {
+  private def _apply_function(f: C => C, p: SList): C = {
+    // println(s"_apply_function: $p")
     val r = f(create_Eval_Context(p))
-    // println(s"_apply_function: $r")
+    // println(s"_apply_function: $p => $r")
     r
   }
 
@@ -440,10 +461,10 @@ trait Binding[C <: EvalContext] {
   val binds = new HashMap[String, SExpr]
 
   def get(atom: SAtom): Option[SExpr] = {
-    binds.get(atom.name) orElse eval_Atom(atom.name)
+    binds.get(atom.name) orElse get_Atom(atom.name)
   }
 
-  protected def eval_Atom(name: String): Option[SExpr] = None
+  protected def get_Atom(name: String): Option[SExpr] = None
 
   def function(atom: SAtom): Option[C => C]
 

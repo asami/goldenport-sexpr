@@ -2,7 +2,7 @@ package org.goldenport.sexpr.eval
 
 import org.goldenport.exception.RAISE
 import org.goldenport.config.ConfigHelper
-import org.goldenport.record.v3.Record
+import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.http.Response
 import org.goldenport.sexpr._
 
@@ -10,17 +10,18 @@ import org.goldenport.sexpr._
  * @since   Feb. 27, 2014
  *  version Sep. 18, 2014
  *  version Aug. 20, 2018
- * @version Sep. 25, 2018
+ *  version Sep. 25, 2018
+ * @version Oct. 17, 2018
  * @author  ASAMI, Tomoharu
  */
 trait EvalContext extends ConfigHelper {
   def config: EvalConfig
   def value: SExpr
-  def bindings: Record
+  def bindings: IRecord
 
   def toResult(p: EvalContext): EvalContext = toResult(p.value, p.bindings)
   def toResult(expr: SExpr): EvalContext = toResult(expr, Record.empty)
-  def toResult(expr: SExpr, bindings: Record): EvalContext
+  def toResult(expr: SExpr, bindings: IRecord): EvalContext
 
   lazy val valueResolved = value match {
     case m: SControl => m.resolve
