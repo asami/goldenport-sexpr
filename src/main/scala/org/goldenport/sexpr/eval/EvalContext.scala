@@ -1,29 +1,62 @@
 package org.goldenport.sexpr.eval
 
+import org.goldenport.exception.RAISE
+import org.goldenport.config.ConfigHelper
+import org.goldenport.record.v3.Record
+import org.goldenport.record.http.Response
 import org.goldenport.sexpr._
 
 /*
  * @since   Feb. 27, 2014
- * @version Sep. 18, 2014
+ *  version Sep. 18, 2014
+ *  version Aug. 20, 2018
+ * @version Sep. 25, 2018
  * @author  ASAMI, Tomoharu
  */
-trait EvalContext {
+trait EvalContext extends ConfigHelper {
+  def config: EvalConfig
   def value: SExpr
-  def toResult(expr: SExpr): EvalContext
+  def bindings: Record
 
-  def args: List[SExpr] = {
+  def toResult(p: EvalContext): EvalContext = toResult(p.value, p.bindings)
+  def toResult(expr: SExpr): EvalContext = toResult(expr, Record.empty)
+  def toResult(expr: SExpr, bindings: Record): EvalContext
+
+  lazy val valueResolved = value match {
+    case m: SControl => m.resolve
+    case _ => value
+  }
+  def resolve: EvalContext = value match {
+    case m: SControl => toResult(m.resolve)
+    case _ => this
+  }
+
+  // obsolate (misleading semantics)
+  lazy val args: List[SExpr] = {
     value match {
       case xs: SList => xs.list
-      case _ => sys.error("???")
+      case _ => RAISE.noReachDefect(value.toString)
     }
   }
 
-  def arg: SExpr = {
+  // obsolate (misleading semantics, use evalElements instead.)
+  lazy val arg: SExpr = {
     value match {
       case xs: SList => xs.list.head
       case _ => value
     }
   }
+
+  lazy val evalElements: EvalElements = EvalElements(value)
+  lazy val parameters: Parameters = evalElements.parameters
+
+  // lazy val functionParameters: List[SExpr] = value match {
+  //   case SNil => Nil
+  //   case m: SList => m.list.tail.map(_.resolve)
+  //   case m => List(m.resolve)
+  // }
+
+  def toSExpr(p: Response): SExpr = config.toSExpr(p)
 
   import SExprConverters._
 
@@ -114,4 +147,6 @@ trait EvalContext {
   def toResult(b: Option[Double], d: Double): EvalContext = {
     toResult(fromDouble(b.getOrElse(d)))
   }
+
+  def toResult(p: Response): EvalContext = toResult(toSExpr(p))
 }
