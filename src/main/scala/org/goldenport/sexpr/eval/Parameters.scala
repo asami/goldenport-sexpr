@@ -1,12 +1,21 @@
 package org.goldenport.sexpr.eval
 
-import scalaz._, Scalaz._
+import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
+import scala.util.control.NonFatal
+import org.goldenport.RAISE
+import org.goldenport.record.v3.{Record, RecordSequence}
+import org.goldenport.record.store.Id
+import org.goldenport.record.store._
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.SExprConverter._
+import org.goldenport.value._
 
 /*
  * @since   Sep. 25, 2018
- * @version Oct. 28, 2018
+ *  version Oct. 28, 2018
+ *  version Mar. 24, 2019
+ *  version Apr.  6, 2019
+ * @version May. 21, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -16,21 +25,60 @@ case class Parameters(
 ) {
   def show = "Paramerters()" // TODO
 
-  def arguments1[A](
+  def head: SExpr = argumentOneBased(1)
+
+  def argument(i: Int): SExpr = argumentOneBased(i)
+
+  def argumentZeroBased(i: Int): SExpr = argumentOneBased(i + 1)
+
+  def argumentOneBased(i: Int): SExpr =
+    if (arguments.length >= i)
+      arguments(i - 1)
+    else
+      RAISE.invalidArgumentFault(s"Not enough arguments ${i}th (one-based)")
+
+  def getArgumentOneBased(i: Int): Option[SExpr] =
+    if (arguments.length >= i)
+      Some(arguments(i - 1))
+    else
+      None
+
+  def argumentList[A](
     spec: FunctionSpecification
-  )(implicit a: SExprConverter[A]) = a.apply(arguments(0))
-  def arguments2[A, B](
+  )(implicit a: SExprConverter[A]): List[A] = arguments.map(a.apply)
+
+  def argument1[A](
     spec: FunctionSpecification
-  )(implicit a: SExprConverter[A], b: SExprConverter[B]): (A, B) = ???
-  def arguments3[A, B, C](spec: FunctionSpecification): (A, B, C) = ???
+  )(implicit a: SExprConverter[A]) = a.apply(argumentOneBased(1))
+  def argument2[A, B](
+    spec: FunctionSpecification
+  )(implicit a: SExprConverter[A], b: SExprConverter[B]): (A, B) = (a.apply(argumentOneBased(1)), b.apply(argumentOneBased(2)))
+  def argument3[A, B, C](
+    spec: FunctionSpecification
+  )(implicit a: SExprConverter[A], b: SExprConverter[B], c: SExprConverter[C]): (A, B, C) = (a.apply(argumentOneBased(1)), b.apply(argumentOneBased(2)), c.apply(argumentOneBased(3)))
+
+  def getArgument1[A](
+    spec: FunctionSpecification
+  )(implicit a: SExprConverter[A]): Option[A] = getArgumentOneBased(1).map(a.apply)
 
   def asStringList: List[String] = arguments.map(_.asString)
   def asBigDecimalList: List[BigDecimal] = arguments.map(_.asBigDecimal)
 
   def getProperty(p: Symbol): Option[SExpr] = properties.get(p)
+  def getPropertyString(p: Symbol): Option[String] = getProperty(p).map {
+    case SString(s) => s
+    case SAtom(n) => n
+    case m => SError.invalidDatatype(p.name, m)
+  }
+  def getPropertySymbol(p: Symbol): Option[Symbol] = getPropertyString(p).map(Symbol(_))
+
   def isSwitch(p: Symbol): Boolean = switches.contains(p)
+
+  def pop: Parameters = copy(arguments = arguments.tail)
 }
 object Parameters {
+  def apply(p: SList): Parameters = apply(p.list)
+
   def apply(ps: List[SExpr]): Parameters = {
     case class Z(
       as: Vector[SExpr] = Vector.empty,
@@ -51,7 +99,7 @@ object Parameters {
         rhs match {
           case m: SKeyword => copy(switches = switches + Symbol(m.name), keyword = None)
           case SNil => copy(switches = switches + Symbol(k.name), keyword = None)
-          case m => copy(props = props |+| Map(Symbol(k.name) -> Vector(m)))
+          case m => copy(props = props |+| Map(Symbol(k.name) -> Vector(m)), keyword = None)
         }
       ).getOrElse(
         rhs match {
@@ -61,5 +109,85 @@ object Parameters {
       )
     }
     ps./:(Z())(_+_).r
+  }
+
+  case class Cursor(feature: FeatureContext, spec: FunctionSpecification, parameters: Parameters) {
+    protected def to_result[T](newspec: FunctionSpecification, r: ValidationNel[SError, T]): (Cursor, ValidationNel[SError, T]) =
+      (copy(spec = newspec), r)
+
+    protected def to_result_pop[T](newspec: FunctionSpecification, r: ValidationNel[SError, T]): (Cursor, ValidationNel[SError, T]) =
+      (copy(spec = newspec, parameters = parameters.pop), r)
+
+    protected def to_success[T](newspec: FunctionSpecification, r: T): (Cursor, ValidationNel[SError, T]) =
+      (copy(spec = newspec), Success(r))
+
+    protected def to_error[T](newspec: FunctionSpecification, e: SError): (Cursor, ValidationNel[SError, T]) =
+      (copy(spec = newspec), Failure(NonEmptyList(e)))
+
+    def argumentList[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, List[A]]) =
+      try {
+        val r = parameters.argumentList(spec)(converter)
+        val nextspec = spec // TODO
+        val nextparams = parameters.copy(arguments = Nil)
+        val nextcursor = Cursor(feature, nextspec, nextparams)
+        (nextcursor, Success(r))
+      } catch {
+        case NonFatal(e) => (this, Failure(SError(e)).toValidationNel)
+      }
+
+    def argument1[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, A]) =
+      try {
+        val r = parameters.argument1(spec)(converter)
+        val nextspec = spec // TODO
+        val nextparams = parameters.pop
+        val nextcursor = Cursor(feature, nextspec, nextparams)
+        (nextcursor, Success(r))
+      } catch {
+        case NonFatal(e) => (this, Failure(SError(e)).toValidationNel)
+      }
+
+    def store: ValidationNel[SError, Store] = RAISE.notImplementedYetDefect
+
+    def storeCollection: (Cursor, ValidationNel[SError, Collection]) = {
+      val store = parameters.getPropertySymbol('store)
+      val collection = parameters.argument1[Symbol](spec)
+      val a = feature.store.getCollection(store, collection)
+      val r = a.map(Success(_)).getOrElse(Failure(SError.notFound("collection", collection.name))).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
+    def idForStore: (Cursor, ValidationNel[SError, Id]) = {
+      val id = parameters.argument1[String](spec)
+      val r = Success(Id.create(id)).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
+    def query: (Cursor, ValidationNel[SError, Query]) = {
+      val query = parameters.argument1[Query](spec)
+      val r = Success(query).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
+    def record: (Cursor, ValidationNel[SError, Record]) = {
+      val rec = parameters.argument1[Record](spec)
+      val r = Success(rec).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
+    def powertypeOption[T <: ValueInstance](key: Symbol, powertypeclass: ValueClass[T]): (Cursor, ValidationNel[SError, Option[T]]) = {
+      val nextspec = spec // TODO
+      parameters.getPropertySymbol(key).
+        map { x =>
+          powertypeclass.get(x.name).
+            map(y => to_success(nextspec, Some(y))).
+            getOrElse(to_error(nextspec, SError.invalidArgument(key.name, x.toString)))
+        }.getOrElse {
+          to_success(nextspec, None)
+        }
+    }
   }
 }

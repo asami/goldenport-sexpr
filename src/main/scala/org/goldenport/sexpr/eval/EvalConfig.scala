@@ -4,11 +4,13 @@ import org.goldenport.config.Config
 import org.goldenport.sexpr._
 import org.goldenport.io.MimeType
 import org.goldenport.bag.ChunkBag
+import org.goldenport.record.v3._
 import org.goldenport.record.http.{Response, StringResponse, BinaryResponse}
 
 /*
  * @since   Sep. 16, 2018
- * @version Feb. 16, 2019
+ *  version Feb. 28, 2019
+ * @version Mar.  2, 2019
  * @author  ASAMI, Tomoharu
  */
 trait EvalConfig extends Config {
@@ -23,6 +25,12 @@ trait EvalConfig extends Config {
   )
 
   val mimeSExprByBinary: Map[MimeType, ChunkBag => SExpr] = Map()
+
+  def toSExpr(p: Field): SExpr = p.value match {
+    case m: SingleValue => SExpr.create(m.value)
+    case m: MultipleValue => SList.create(m.values.map(SExpr.create))
+    case EmptyValue => SNil
+  }
 
   def toSExpr(p: Response): SExpr = {
     p match {

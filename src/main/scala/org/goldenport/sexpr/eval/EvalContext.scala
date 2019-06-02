@@ -1,8 +1,9 @@
 package org.goldenport.sexpr.eval
 
+import scalaz._, Scalaz._
 import org.goldenport.exception.RAISE
 import org.goldenport.config.ConfigHelper
-import org.goldenport.record.v3.{IRecord, Record}
+import org.goldenport.record.v3.{IRecord, Record, Field}
 import org.goldenport.record.http.Response
 import org.goldenport.sexpr._
 
@@ -11,7 +12,9 @@ import org.goldenport.sexpr._
  *  version Sep. 18, 2014
  *  version Aug. 20, 2018
  *  version Sep. 25, 2018
- * @version Oct. 17, 2018
+ *  version Oct. 17, 2018
+ *  version Feb. 28, 2019
+ * @version Mar. 10, 2019
  * @author  ASAMI, Tomoharu
  */
 trait EvalContext extends ConfigHelper {
@@ -23,13 +26,18 @@ trait EvalContext extends ConfigHelper {
   def toResult(expr: SExpr): EvalContext = toResult(expr, Record.empty)
   def toResult(expr: SExpr, bindings: IRecord): EvalContext
 
+  def addBindings(bindings: IRecord): EvalContext
+
   lazy val valueResolved = value match {
     case m: SControl => m.resolve
     case _ => value
   }
-  def resolve: EvalContext = value match {
-    case m: SControl => toResult(m.resolve)
-    case _ => this
+  def resolve: EvalContext = {
+    // println(s"EvalContext#resolve $value")
+    value match {
+      case m: SControl => toResult(m.resolve)
+      case _ => this
+    }
   }
 
   // obsolate (misleading semantics)
@@ -51,12 +59,28 @@ trait EvalContext extends ConfigHelper {
   lazy val evalElements: EvalElements = EvalElements(value)
   lazy val parameters: Parameters = evalElements.parameters
 
+  lazy val valueOrParameters: \/[SExpr, Parameters] = value match {
+    case m: SCell => \/-(parameters)
+    case m => -\/(m)
+  }
+
+  def valueOrArgument1[A](
+    spec: FunctionSpecification
+  )(implicit a: SExprConverter[A]) = valueOrParameters match {
+    case \/-(r) => r.argument1(spec)
+    case -\/(l) => a.apply(l)
+  }
+
+  def getBindedValue(key: Symbol): Option[SExpr] = bindings.getField(key).map(toSExpr)
+  def getBindedValue(key: String): Option[SExpr] = bindings.getField(key).map(toSExpr)
+
   // lazy val functionParameters: List[SExpr] = value match {
   //   case SNil => Nil
   //   case m: SList => m.list.tail.map(_.resolve)
   //   case m => List(m.resolve)
   // }
 
+  def toSExpr(p: Field): SExpr = config.toSExpr(p)
   def toSExpr(p: Response): SExpr = config.toSExpr(p)
 
   import SExprConverters._

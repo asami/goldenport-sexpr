@@ -16,11 +16,15 @@ import org.goldenport.sexpr._
  *  version Aug. 19, 2018
  *  version Sep. 30, 2018
  *  version Oct. 21, 2018
- * @version Feb. 24, 2019
+ *  version Feb. 28, 2019
+ *  version Mar. 10, 2019
+ *  version Apr. 20, 2019
+ * @version May.  3, 2019
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator[C <: EvalContext] extends Loggable {
   override protected def log_Location = InterpreterLocation
+  override protected def log_Label = Some("evaluator")
 
   private val _stack = new Stack[Binding[C]]
 
@@ -31,19 +35,25 @@ trait Evaluator[C <: EvalContext] extends Loggable {
   protected def get_function[T](ctx: C): Option[LispFunction] = 
     _stack.toStream.flatMap(_.getFunction(ctx)).headOption
 
+  protected def get_macro[T](ctx: C): Option[LispMacro] = None // TODO
+
   def parse(in: CharSequence): SExpr = SExprParserNew(in)
 
   def apply(expr: SExpr): C = {
-    log_start_debug("apply", s"$expr")
+    log_debug_start("evaluator-apply", s"evaluator-apply: $expr")
+    // val a = eval_to_context(expr)
+    // println(s"Evaluator#apply $a")
     val r: EvalContext = eval_to_context(expr).resolve
-    log_end_debug("apply", s"$expr => $r")
+    // println(s"evaluator-apply: $expr => $r")
+    // println(s"evaluator r.resolve: ${r.resolve}")
+    log_debug_end("evaluator-apply", s"evaluator-apply: $expr => $r")
     lift_Eval_Context(r)
   }
 
   def applyLazy(expr: SExpr): C = {
-    log_start_debug("apply", s"$expr")
+    log_debug_start("evaluator-applylazy", s"evaluator-applylazy: $expr")
     val r: EvalContext = eval_to_context(expr)
-    log_start_debug("apply", s"$expr => $r")
+    log_debug_end("evaluator-applylazy", s"evaluator-applylazy: $expr => $r")
     lift_Eval_Context(r)
   }
 
@@ -52,7 +62,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
   }
 
   def eval(expr: SExpr): SExpr = {
-    log_start_debug("eval", s"$expr")
+    log_debug_start("evaluator-eval", s"evaluator-eval: $expr")
     val a = expr match {
       case atom: SAtom => eval_atom(atom)
       case keyword: SKeyword => eval_keyword(keyword)
@@ -79,39 +89,38 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case m: SXslt => m
       case m: SPug => m
       case j: SJson => eval_json(j)
+      case m: SExpression => eval_expression(m)
       case m: SExtension => eval_extension(m)
       case p: SPseudo => eval_pseudo(p)
       case m => m
     }
     val r = a.resolve
-    log_end_debug("eval", s"$expr => $r")
+    log_debug_end("evaluator-eval", s"evaluator-eval: $expr => $r")
     r
   }
 
   protected def eval_atom(atom: SAtom): SExpr = {
     if (_stack.isEmpty)
       throw new IllegalStateException("Stack should be pushed init binding.")
+    // println(s"Evaluator:eval_atom($atom): ${_stack}")
     eval_Atom(atom) getOrElse _eval_atom(atom)
   }
 
   protected def eval_Atom(atom: SAtom): Option[SExpr] = None
 
-  private def _eval_atom(atom: SAtom): SExpr = {
-    _stack.toStream.flatMap(_.get(atom)).headOption match {
-      case Some(s) => s
-      case None => {
-        val cs = Vector(create_Eval_Context(Nil))
-        _stack.toStream.flatMap(_.function(atom)).headOption match {
-          case Some(f) => f(reduction_Context(cs)).value
-          case None => atom // TODO error
-        }
+  private def _eval_atom(atom: SAtom): SExpr = _eval_atom_option(atom).
+    getOrElse(SError.bindingNotFound(atom.name))
+
+  private def _eval_atom_option(atom: SAtom): Option[SExpr] =
+    _stack.toStream.flatMap(_.get(atom)).headOption.orElse {
+      val cs = Vector(create_Eval_Context(Nil))
+      _stack.toStream.flatMap(_.function(atom)).headOption match {
+        case Some(f) => Some(f(reduction_Context(cs)).value)
+        case None => None
       }
     }
-  }
 
-  protected def eval_keyword(keyword: SKeyword): SExpr = {
-    sys.error(s"Evaluator#evel_keyword: $keyword")
-  }
+  protected def eval_keyword(keyword: SKeyword): SExpr = keyword
 
   protected def eval_number(num: SNumber): SExpr = {
     num
@@ -154,6 +163,12 @@ trait Evaluator[C <: EvalContext] extends Loggable {
   protected def eval_json(p: SJson): SExpr = p
 
   protected def eval_xpath(p: SXPath): SExpr = p
+
+  protected def eval_expression(p: SExpression): SExpr = {
+    val atom = SAtom(p.expression)
+    _eval_atom_option(atom).
+      getOrElse(SError.bindingNotFound(p.expression))
+  }
 
   protected def eval_extension(p: SExtension): SExpr = p
 
@@ -198,6 +213,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case x: SXml => eval_xml_to_context(x)
       case j: SJson => eval_json_to_context(j)
       case m: SXPath => eval_xpath_to_context(m)
+      case m: SExpression => eval_expression_to_context(m)
       case m: SExtension => eval_extension_to_context(m)
       case p: SPseudo => eval_pseudo_to_context(p)
       case m => create_Eval_Context(m)
@@ -278,6 +294,10 @@ trait Evaluator[C <: EvalContext] extends Loggable {
     r
   }
 
+  protected def eval_expression_to_context(p: SExpression): C = {
+    create_Eval_Context(eval_expression(p))
+  }
+
   protected def eval_extension_to_context(p: SExtension): C = {
     create_Eval_Context(eval_extension(p))
   }
@@ -324,9 +344,9 @@ trait Evaluator[C <: EvalContext] extends Loggable {
   }
 
   private def _apply_function(f: C => C, p: SList): C = {
-    // println(s"_apply_function: $p")
+    log_trace_start(s"_apply_function: $p")
     val r = f(create_Eval_Context(p))
-    // println(s"_apply_function: $p => $r")
+    log_trace_end(s"_apply_function: $p => $r")
     r
   }
 

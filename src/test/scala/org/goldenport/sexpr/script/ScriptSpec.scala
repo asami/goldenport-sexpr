@@ -11,7 +11,8 @@ import org.goldenport.sexpr._
  *  version Sep. 25, 2018
  *  version Oct. 26, 2018
  *  version Jan.  1, 2019
- * @version Feb.  9, 2019
+ *  version Feb. 25, 2019
+ * @version May.  6, 2019
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -23,9 +24,14 @@ class ScriptSpec extends WordSpec with Matchers with GivenWhenThen {
       r should be(Script(SExprParser(s)))
     }
     "keyword" in {
+      val s = """(:key)"""
+      val r = Script.parse(s)
+      r should be(Script(SList(SKeyword("key"))))
+    }
+    "metacommand" in {
       val s = """:key"""
       val r = Script.parse(s)
-      r should be(Script(SKeyword("key")))
+      r should be(Script(SMetaCommand("key")))
     }
     "expression" in {
       val s = """(+ 1 1)"""
@@ -135,8 +141,8 @@ class ScriptSpec extends WordSpec with Matchers with GivenWhenThen {
         SList(SAtom.quote, SList(SString("a"), SCell(SString("z"), SNumber(1)), SString("b")))
       )))
     }
-    "xpath" ignore {
-      val s = """pathget /user/city <user><name>taro</name><city>yokohama</city></user>"""
+    "xpath" in {
+      val s = """path-get /user/city <user><name>taro</name><city>yokohama</city></user>"""
       val r = Script.parse(s)
       r should be(Script(SList(SAtom("path-get"), SXPath("/user/city"), SXml("<user><name>taro</name><city>yokohama</city></user>"))))
     }

@@ -14,7 +14,9 @@ import org.goldenport.sexpr.util.AnyUtils
  *  version May. 25, 2014
  *  version Nov. 28, 2014
  *  version Dec.  6, 2015
- * @version Feb. 27, 2016
+ *  version Feb. 27, 2016
+ *  version Apr. 20, 2019
+ * @version May.  9, 2019
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -146,7 +148,7 @@ trait SExprParsers extends Parsers {
     def apply(in: Input) = {
       in.first match {
         case SClose => Success(SClose, in.rest)
-        case _ => Failure("not close", in.rest)
+        case m => Failure(s"no match: $m", in.rest)
       }
     }
   }
@@ -285,6 +287,21 @@ trait SExprParsers extends Parsers {
     }
   }
 
+  def keyword_name: Parser[String] = new Parser[String] {
+    def apply(in: Input) = {
+      in.first match {
+        case m: SKeyword => Success(m.name, in.rest)
+        case m => Failure(s"not keyword: $m", in.rest)
+      }
+    }
+  }
+
+  def keyword_name_expr: Parser[(String, SExpr)] = {
+    keyword_name ~ expr ^^ {
+      case name ~ expr => (name, expr)
+    }
+  }
+
   def keyword(name: String): Parser[SKeyword] = new Parser[SKeyword] {
     def apply(in: Input) = {
       val NAME = name
@@ -325,6 +342,41 @@ trait SExprParsers extends Parsers {
     }
   }
 
+  def cell_key_value: Parser[(String, SExpr)] = new Parser[(String, SExpr)] {
+    def apply(in: Input) = {
+      in.first match {
+        case SCell(car, cdr) => car match {
+          case SAtom(a) => Success(a -> cdr, in.rest)
+          case SString(s) => Success(s -> cdr, in.rest)
+          case m => Failure("not key value cell: $m", in.rest)
+        }
+        case m => Failure("not key value cell: $m", in.rest)
+      }
+    }
+
+    def value(p: SExpr) = p match {
+      case SCell(car, cdr) => cdr match {
+        case SNil => car
+        case _ => p
+      }
+      case m => m
+    }
+  }
+
+  def association_pair_key_value: Parser[(String, SExpr)] = new Parser[(String, SExpr)] {
+    def apply(in: Input) = {
+      in.first match {
+        case SCell(car, cdr) => car match {
+          case SAtom(a) => Success(a -> cdr, in.rest)
+          case SString(s) => Success(s -> cdr, in.rest)
+          case m => Failure("not key value cell: $m", in.rest)
+        }
+        case m => Failure("not key value cell: $m", in.rest)
+      }
+    }
+  }
+
+  //
   protected def as_boolean(
     name: String, params: Seq[(String, Any)],
     v: Boolean
@@ -436,6 +488,10 @@ trait SExprParsers extends Parsers {
       case m: Seq[_] => m.toVector.flatMap(_to_string_vector)
       case m => Vector(m.toString)
     }
+
+  protected def expr = new Parser[SExpr] {
+    def apply(in: Input) = Success(in.first, in.rest)
+  }
 
   protected def expr_list = new Parser[List[SExpr]] {
     def apply(in: Input) = {

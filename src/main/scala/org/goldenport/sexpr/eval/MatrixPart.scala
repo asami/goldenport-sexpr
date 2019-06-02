@@ -1,15 +1,18 @@
 package org.goldenport.sexpr.eval
 
 import java.net.URI
-import breeze.linalg._
+import breeze.linalg.{Vector => BVector, _}
 import breeze.plot._
+import org.goldenport.RAISE
 import org.goldenport.record.v2.bag.CsvBag
-import org.goldenport.sexpr._
 import org.goldenport.matrix.IMatrix
+import org.goldenport.sexpr._
+import org.goldenport.sexpr.eval.chart.Chart
 
 /*
  * @since   Feb.  9, 2019
- * @version Feb. 12, 2019
+ *  version Feb. 12, 2019
+ * @version Mar. 10, 2019
  * @author  ASAMI, Tomoharu
  */
 trait MatrixPart { self: LispFunction =>
@@ -32,22 +35,25 @@ trait MatrixPart { self: LispFunction =>
   }
 
   protected final def matrix_chart(u: LispContext, p: IMatrix[Double]): SExpr = {
-    val f = Figure()
-    val p = f.subplot(0)
-    val x = linspace(0.0,1.0)
-    p += plot(x, x :^ 2.0)
-    p += plot(x, x :^ 3.0, '.')
-    p.xlabel = "x axis"
-    p.ylabel = "y axis"
-    f.refresh()
-    SProcess(MatrixPart.BreezeFigureProcess(f))
+    // val f = Figure()
+    // val p = f.subplot(0)
+    // val x = linspace(0.0,1.0)
+    // p += plot(x, x :^ 2.0)
+    // p += plot(x, x :^ 3.0, '.')
+    // p.xlabel = "x axis"
+    // p.ylabel = "y axis"
+    // f.refresh()
+    // SWindow(MatrixPart.BreezeFigureWindow(f))
+    val chart = Chart.empty.
+      withXLabel("x axis").
+      withYLabel("y axis")
+    val plots = Vector.empty
+    val space = S2DSpace(plots, chart)
+    u.feature.chart.draw(space)
   }
 }
 
 object MatrixPart {
-  case class BreezeFigureProcess(figure: Figure) extends IProcess {
-  }
-
   // case class CsvMatrix(bag: CsvBag) extends IMatrix[Double] {
   //   lazy val breeze: Matrix[Double] = {
   //     val m = bag.matrixDouble

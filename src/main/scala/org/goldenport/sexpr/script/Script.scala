@@ -13,7 +13,9 @@ import org.goldenport.sexpr._
  * @since   Sep.  3, 2018
  *  version Oct. 27, 2018
  *  version Jan.  3, 2019
- * @version Feb. 24, 2019
+ *  version Feb. 24, 2019
+ *  version Mar.  9, 2019
+ * @version May. 21, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -53,12 +55,18 @@ object Script {
 
   def parse(line: LogicalLine): Script = parse(Config.default, line)
 
-  def parse(config: Config, line: LogicalLine): Script = {
-    if (line.text.startsWith(":"))
+  def parse(config: Config, line: LogicalLine): Script =
+    if (line.text.startsWith(": ")) {
+      val a = _parse(config, LogicalLine(line.text.substring(1).trim))
+      a.expressions.headOption.
+        map(x =>
+          Script(SCell(SAtom(":"), x) +: a.expressions.tail)
+        ).getOrElse(Script(SMetaCommand("")))
+    } else if (line.text.startsWith(":")) {
       Script(SMetaCommand(line.text.substring(1)))
-    else
+    } else {
       _parse(config, line)
-  }
+    }
 
   private def _parse(config: Config, line: LogicalLine): Script = {
     val parser = LogicalTokenReaderWriterStateClass[Config, Script](config, ScriptState.init)
@@ -131,14 +139,22 @@ object Script {
       t match {
         case m: AtomToken =>
           val name = m.name
-          val a = if (name.startsWith(":"))
-            SKeyword(name.substring(1))
-          else
-            SAtom(name)
+          val a = name.toLowerCase match {
+            case "nil" => SNil
+            case "t" => SBoolean.TRUE
+            case "true" => SBoolean.TRUE
+            case "false" => SBoolean.FALSE
+            case  _ => 
+              if (name.startsWith(":"))
+                SKeyword(name.substring(1))
+              else
+                SAtom(name)
+          }
           add_Sexpr(config, a)
-        case m: StringToken => add_Sexpr(config, _to_string(m))
+        case m: StringToken => add_Sexpr(config, _from_string(m))
         case m: BooleanToken => add_Sexpr(config, SBoolean(m.b))
         case m: NumberToken => add_Sexpr(config, SNumber(m.n))
+        case m: ComplexToken => add_Sexpr(config, SComplex(m.n))
         case m: DateTimeToken => add_Sexpr(config, SDateTime(m.datetime))
         case m: LocalDateToken => add_Sexpr(config, SLocalDate(m.date))
         case m: LocalTimeToken => add_Sexpr(config, SLocalTime(m.time))
@@ -147,22 +163,38 @@ object Script {
         case m: UrlToken => add_Sexpr(config, SUrl(m.url))
         case m: UrnToken => add_Sexpr(config, SUrn(m.urn))
         case m: PathToken => add_Sexpr(config, SXPath(m.path))
-        case m: ExpressionToken => add_Sexpr(config, SScript(m.text))
+        case m: ExpressionToken => add_Sexpr(config, SExpression(m.text))
+        case m: ExplicitLiteralToken => RAISE.notImplementedYetDefect
+        case m: ScriptToken => add_Sexpr(config, SScript(m.text))
         case m: XmlToken => add_Sexpr(config, SXml(m.text))
         case m: JsonToken => add_Sexpr(config, SJson(m.text))
-        case m: BracketToken => add_Sexpr(config, SScript(m.prefix, m.text))
-        case m: RawBracketToken => add_Sexpr(config, SScript(m.prefix, m.text))
+        case m: BracketToken => add_Sexpr(config, SScript(m.prefix, m.text)) // TODO matrix
+        case m: RawBracketToken => add_Sexpr(config, SScript(m.prefix, m.text)) // TODO matrix
         case m: SingleQuoteToken => add_Sexpr(config, SSingleQuote()) // no reach
         case m: ExternalLogicalToken => RAISE.noReachDefect(getClass.getSimpleName)
       }
 
-    private def _to_string(p: StringToken) =
+    private def _from_string(p: StringToken) =
       p.prefix.map {
         case "record" => SRecord(_to_record(p.text))
         case "regex" => SRegex(new scala.util.matching.Regex(p.text))
+        case "xml" => SXml(p.text)
+        case "html" => SHtml(p.text)
         case "xpath" => SXPath(p.text)
         case "xslt" => SXslt(p.text)
+        case "json" => SJson(p.text)
         case "pug" => SPug(p.text)
+        // case "datetime" => SDateTime(p.text)
+        // case "local-datetime" => SLocalDateTime(p.text)
+        // case "local-date" => SLocalDate(p.text)
+        // case "local-time" => SLocalTime(p.text)
+        // case "monthday" => SMonthDay(p.text)
+        // case "interval" => SInterval(p.text)
+        // case "duration" => SDuration(p.text)
+        // case "period" => SPeriod(p.text)
+        // case "currency" => SCurrency(p.text)
+        // case "percent" => SPercent(p.text)
+        // case "unit" => SUnit(p.text)
         case _ => SString(p.text)
       }.getOrElse(SString(p.text))
 

@@ -4,17 +4,19 @@ import org.scalatest.WordSpec
 import org.scalatest.Matchers
 import org.scalatest.junit.JUnitRunner
 import org.junit.runner.RunWith
+import org.goldenport.xml.dom.{DomParser, DomUtils}
 
 /*
  * @since   Sep.  9, 2012
- *  version Sep.  9, 2012
  *  version Aug.  8, 2013
  *  version Feb.  4, 2014
  *  version Dec. 17, 2014
  *  version Mar. 11, 2015
  *  version Sep. 16, 2018
  *  version Jan. 27, 2019
- * @version Feb.  3, 2019
+ *  version Feb.  3, 2019
+ *  version Apr. 13, 2019
+ * @version May.  4, 2019
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -29,7 +31,7 @@ class SExprSpec extends WordSpec with Matchers {
         val literal = "\"" + text + "\""
         var s = SExprParser(literal)
         s should equal (SString(rawtext))
-        s.show should equal (literal)
+//        s.show should equal (literal)
       }
       "backslash in expr" in {
         val rawtext = """abc \9 xyz"""
@@ -37,7 +39,7 @@ class SExprSpec extends WordSpec with Matchers {
         val literal = "(\"" + text + "\")"
         var s = SExprParser(literal)
         s should equal (SList(SString(rawtext)))
-        s.show should equal (literal)
+//        s.show should equal (literal)
       }
       "invalid backslash" in {
         val text = """abc \9 xyz"""
@@ -79,6 +81,30 @@ class SExprSpec extends WordSpec with Matchers {
         val s = SExprParserNew("'a") // currently SExprParser does not support the quote feature.
         s should equal (SList(SAtom.quote, SAtom("a")))
       }
+    }
+  }
+  "SXml" should {
+    "equal string string" in {
+      val a = SXml("<DIV>a</DIV>")
+      val b = SXml("<DIV>a</DIV>")
+      a == b should be(true)
+    }
+    "equal string dom" in {
+      val a = SXml("<DIV>a</DIV>")
+      val b = SXml(DomParser.parse("<DIV>a</DIV>"))
+      a == b should be(true)
+    }
+    "equal dom dom" in {
+      val a = SXml(DomParser.parse("<DIV>a</DIV>"))
+      val b = SXml(DomParser.parse("<DIV>a</DIV>"))
+      a == b should be(true)
+    }
+  }
+  "SHtml" should {
+    "equal" in {
+      val a = SHtml("<DIV>a")
+      val b = SHtml("<DIV>a")
+      a == b should be(true)
     }
   }
 }

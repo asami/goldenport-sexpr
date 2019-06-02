@@ -21,7 +21,8 @@ import org.goldenport.sexpr.eval.LogicalTokensReader
  *  version Mar. 10, 2016
  *  version Aug. 30, 2018
  *  version Sep.  9, 2018
- * @version Feb. 16, 2019
+ *  version Feb. 16, 2019
+ * @version Apr. 13, 2019
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -163,14 +164,14 @@ object SExprParserNew extends Parsers {
   def apply(reader: Reader): SExpr = apply(reader.asReadChars.string)
 
   def apply(in: CharSequence): SExpr = {
-    // println(s"apply $in")
+    println(s"apply $in")
     parse(LogicalTokens.parseSexpr(in.toString))
   }
 
   def parse(in: LogicalTokens): SExpr = {
-    // println(s"SExprParserNew#parse $in")
+    println(s"SExprParserNew#parse $in")
     val reader = LogicalTokensReader(in)
-    // println(reader)
+    println(reader)
     sexpr(reader) match {
       case Success(s, _) => s
       case Failure(msg, in) => throw new IllegalArgumentException(s"$msg")
