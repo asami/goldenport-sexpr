@@ -11,7 +11,8 @@ import org.goldenport.sexpr.eval._
 
 /*
  * @since   Mar. 30, 2019
- * @version Apr. 14, 2019
+ *  version Apr. 14, 2019
+ * @version Jul. 14, 2019
  * @author  ASAMI, Tomoharu
  */
 object StoreFunction {
@@ -54,15 +55,15 @@ object StoreFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object StoreInsert extends IoFunction {
+  case object StoreInsert extends SyncIoFunction { // TODO IoFunction and synchronize in the connection context.
     val specification = FunctionSpecification("store-insert", 1)
 
     def apply(p: LispContext): LispContext = {
       val a = for {
         collection <- p.param.storeCollection
-        rec <- p.param.record
+        rs <- p.param.records
       } yield {
-        (collection |@| rec)(p.feature.store.insert(_, _)).valueOr(SError(_))
+        (collection |@| rs)(p.feature.store.insert(_, _)).valueOr(SError(_))
       }
       val r = a.run(p.param.cursor(specification))
       p.toResult(r._2)
@@ -71,7 +72,7 @@ object StoreFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object StoreUpdate extends IoFunction {
+  case object StoreUpdate extends SyncIoFunction { // TODO IoFunction and synchronize in the connection context.
     val specification = FunctionSpecification("store-update", 1)
 
     def apply(p: LispContext): LispContext = {
@@ -89,7 +90,7 @@ object StoreFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object StoreDelete extends IoFunction {
+  case object StoreDelete extends SyncIoFunction { // TODO IoFunction and synchronize in the connection context.
     val specification = FunctionSpecification("store-delete", 1)
 
     def apply(p: LispContext): LispContext = {
@@ -106,13 +107,13 @@ object StoreFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object StoreCreate extends IoFunction {
+  case object StoreCreate extends SyncIoFunction {
     val specification = FunctionSpecification("store-create", 1)
 
     def apply(p: LispContext): LispContext = {
       val a = for {
         collection <- p.param.argument1[Symbol]
-        schema <- p.param.argument1[Schema]
+        schema <- p.param.schema(p)
       } yield {
         (collection |@| schema)(p.feature.store.create(_, _)).valueOr(SError(_))
       }
@@ -123,7 +124,7 @@ object StoreFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object StoreDrop extends IoFunction {
+  case object StoreDrop extends SyncIoFunction { // TODO IoFunction and synchronize in the connection context.
     val specification = FunctionSpecification("store-drop", 1)
 
     def apply(p: LispContext): LispContext = {

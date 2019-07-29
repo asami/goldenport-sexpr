@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
 import org.goldenport.RAISE
+import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{Record, RecordSequence}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
@@ -12,9 +13,9 @@ import Parameters.Cursor
 
 /*
  * @since   Mar. 31, 2019
- *  version Mar. 31, 2019
  *  version Apr. 20, 2019
- * @version May. 14, 2019
+ *  version May. 14, 2019
+ * @version Jul. 14, 2019
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -29,9 +30,13 @@ trait ParameterPart { self: LispContext =>
 
     def idForStore = State[Cursor, ValidationNel[SError, Id]](_.idForStore)
 
+    def schema(p: LispContext) = State[Cursor, ValidationNel[SError, Schema]](_.schema(p))
+
     def query = State[Cursor, ValidationNel[SError, Query]](_.query)
 
     def record = State[Cursor, ValidationNel[SError, Record]](_.record)
+
+    def records = State[Cursor, ValidationNel[SError, RecordSequence]](_.records)
 
     def powertypeOption[T <: ValueInstance](key: Symbol, powertypeclass: ValueClass[T]) = State[Cursor, ValidationNel[SError, Option[T]]](_.powertypeOption(key, powertypeclass))
 

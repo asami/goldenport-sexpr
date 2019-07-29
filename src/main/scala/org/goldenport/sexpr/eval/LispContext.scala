@@ -14,6 +14,7 @@ import org.goldenport.record.unitofwork.interpreter.{UnitOfWorkLogic, StoreOpera
 import org.goldenport.record.http.Response
 import org.goldenport.log.LogMark._
 import org.goldenport.cli.ShellCommand
+import org.goldenport.incident.{Incident => LibIncident}
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.store.StoreFeature
 import org.goldenport.sexpr.eval.chart.ChartFeature
@@ -25,7 +26,9 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Feb. 28, 2019
  *  version Mar. 31, 2019
  *  version Apr. 12, 2019
- * @version May. 20, 2019
+ *  version May. 20, 2019
+ *  version Jun.  9, 2019
+ * @version Jul. 14, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
@@ -36,7 +39,7 @@ trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
   def scriptContext: ScriptEngineManager
   def sqlContext: SqlContext
   def feature: FeatureContext
-  def incident: Option[Incident]
+  def incident: Option[LibIncident]
 
   def pure(p: SExpr): LispContext
 
@@ -95,9 +98,9 @@ trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
 
   override final def toResult(expr: SExpr, bindings: IRecord): LispContext = toResult(expr, None, bindings)
 
-  def toResult(expr: SExpr, incident: Incident): LispContext = toResult(expr, Some(incident), Record.empty)
+  def toResult(expr: SExpr, incident: LibIncident): LispContext = toResult(expr, Some(incident), Record.empty)
 
-  def toResult(expr: SExpr, incident: Option[Incident], bindings: IRecord): LispContext
+  def toResult(expr: SExpr, incident: Option[LibIncident], bindings: IRecord): LispContext
 
   override final def toResult(p: Response): LispContext = toResult(toSExpr(p))
 
@@ -177,7 +180,12 @@ object LispContext {
     evaluator: LispContext => LispContext,
     x: SExpr
   ): LispContext = {
-    val sqlcontext = SqlContext.create(config.properties)
+    val sqlcontext = {
+      if (true)
+        SqlContext.createSync(config.properties)
+      else
+        SqlContext.createConnectionPool(config.properties)
+    }
     val featurecontext = FeatureContext(
       new StoreFeature(config.properties, sqlcontext),
       ChartFeature.default
@@ -205,11 +213,11 @@ object LispContext {
     sqlContext: SqlContext,
     feature: FeatureContext,
     value: SExpr,
-    incident: Option[Incident],
+    incident: Option[LibIncident],
     bindings: Record
   ) extends LispContext {
     def pure(p: SExpr) = copy(value = p)
-    def toResult(p: SExpr, i: Option[Incident], b: IRecord) = copy(value = p, incident = i, bindings = bindings + b.toRecord)
+    def toResult(p: SExpr, i: Option[LibIncident], b: IRecord) = copy(value = p, incident = i, bindings = bindings + b.toRecord)
     def addBindings(p: IRecord) = copy(bindings = bindings + p.toRecord)
   }
 }

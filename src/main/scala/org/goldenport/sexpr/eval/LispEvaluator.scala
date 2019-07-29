@@ -24,7 +24,8 @@ import org.goldenport.sexpr.eval.aws.AwsFunction
  *  version Mar. 30, 2019
  *  version Apr. 14, 2019
  *  version May. 26, 2019
- * @version Jun.  1, 2019
+ *  version Jun. 24, 2019
+ * @version Jul. 28, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -130,6 +131,9 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
         case m: AsyncIoFunction =>
           c.log.trace(s"apply_function[AsyncIoControl:${f.name}] ${c.value}")
           _eval_function(c, m)
+        case m: SyncIoFunction =>
+          c.log.trace(s"apply_function[SyncIoControl:${f.name}] ${c.value}")
+          _eval_function(c, m)
         case m: IoFunction =>
           c.log.trace(s"apply_function[Io:${f.name}] ${c.value}")
           c.toResult(SFuture(c, m).start())
@@ -212,10 +216,11 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
     Vector(
       EvalOrInvoke, Quote, Setq,
       Pop, Peek, Mute, History, CommandHistory,
-      Car, Cdr, And, Or, Plus, Length, PathGet, Transform,
+      Car, Cdr, And, Or, Plus, Length, PathGet, Transform, Xslt,
       Fetch, Retry, Sh,
       HttpGet, HttpPost, HttpPut, HttpDelete,
       MatrixLoad, MatrixChart,
+      RecordMake,
       TableLoad, TableMake, TableChart
     ) ++ EmacsLispFunction.functions ++ SchemeFunction.functions ++
     _sql_functions ++ _store_functions ++ _entity_functions ++ _repository_functions ++

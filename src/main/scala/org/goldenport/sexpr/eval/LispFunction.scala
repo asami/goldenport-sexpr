@@ -17,10 +17,11 @@ import org.goldenport.io.{MimeType, UrlUtils, Retry => LibRetry}
 import org.goldenport.sexpr._, SExprConverter._
 import org.goldenport.matrix.IMatrix
 import org.goldenport.table.ITable
-import org.goldenport.bag.EmptyBag
+import org.goldenport.bag.{EmptyBag, ChunkBag, StringBag}
 import org.goldenport.xml.dom.DomUtils
 import org.goldenport.log.Loggable
 import org.goldenport.cli.ShellCommand
+import org.goldenport.incident.{Incident => LibIncident}
 
 /*
  * @since   Sep. 10, 2018
@@ -31,11 +32,12 @@ import org.goldenport.cli.ShellCommand
  *  version Mar. 30, 2019
  *  version Apr. 22, 2019
  *  version May. 26, 2019
- * @version Jun.  1, 2019
+ *  version Jun. 30, 2019
+ * @version Jul. 28, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
-    with UtilityPart with MatrixPart with XPathPart with TablePart with Loggable {
+    with UtilityPart with MatrixPart with XPathPart with RecordPart with TablePart with Loggable {
   def specification: FunctionSpecification
   def name: String = specification.name
 
@@ -60,6 +62,70 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
   }
 
   def apply(p: LispContext): LispContext
+
+  protected final def normalize_auto(u: LispContext, p: SExpr): SExpr = p match {
+    case m: SUrl => resolve_url(u, m)
+    case m: SUrn => resolve_urn(u, m)
+    case _ => SExpr.normalizeAuto(p)
+  }
+
+  protected final def resolve_url(u: LispContext, url: SUrl): SExpr = {
+    val start = System.currentTimeMillis
+    try {
+      val res = u.serviceLogic.fileFetch(url.url)
+      log_debug(s"resolve_url: $url => $res")
+      val i = FileIncident(start, url, res)
+      response_result(url, res)
+    } catch {
+      case NonFatal(e) =>
+        log_debug(s"resolve_url: $url => $e")
+        val i = FileIncident(start, url, e)
+        SError(i)
+    }
+  }
+
+  protected final def file_fetch(u: LispContext, url: URL): LispContext = {
+    val start = System.currentTimeMillis
+    try {
+      val res = u.serviceLogic.fileFetch(url)
+      log_debug(s"file_fetch: $url => $res")
+      val i = FileIncident(start, url, res)
+      val r = response_result(url, res)
+      u.toResult(r, i)
+    } catch {
+      case NonFatal(e) =>
+        log_debug(s"file_fetch: $url => $e")
+        val i = FileIncident(start, url, e)
+        u.toResult(SError(i), i)
+    }
+  }
+
+  protected final def resolve_urn(u: LispContext, urn: SUrn): SExpr = urn // TODO driver
+
+  protected final def response_result(url: URL, p: ChunkBag): SExpr = {
+    def string = p.toText
+    def stringorclob = p.getSize.map(size =>
+      if (size > 8192)
+        SString(p.toText)
+      else
+        SClob(p)
+    ).getOrElse(SClob(p))
+    val mime = MimeType.getBySuffix(url)
+    mime.map {
+      case MimeType.TEXT_XSL => SXsl(string)
+      case m => 
+        if (m.isHtml)
+          SHtml(string)
+        else if (m.isXml)
+          SXml(string)
+        else if (m.isJson)
+          SJson(string)
+        else if (m.isText)
+          stringorclob
+        else
+          SBlob(p)
+    }.getOrElse(SBlob(p))
+  }
 }
 
 trait EvalFunction extends LispFunction {
@@ -69,6 +135,14 @@ trait EvalFunction extends LispFunction {
   }
 
   def eval(p: Parameters): SExpr
+}
+
+trait ResolvedParametersFeature { self: EvalFunction =>
+  override def apply(p: LispContext): LispContext = {
+    val ps = p.parameters.map(normalize_auto(p, _))
+    val r = eval(ps)
+    p.toResult(r)
+  }
 }
 
 trait ControlFunction extends LispFunction {
@@ -149,6 +223,15 @@ trait IoFunction extends EffectFunction { // I/O bound
   protected final def is_implicit_http_communication(u: LispContext): Boolean =
     u.bindings.getUrl("http.baseurl").isDefined
 
+  protected final def url_get(u: LispContext, url: URL): LispContext = {
+    url.getProtocol match {
+      case "http" => http_get(u, url)
+      case "https" => http_get(u, url)
+      case "file" => file_fetch(u, url)
+      case m => RAISE.invalidArgumentFault(s"Unavaiable protocol: $m")
+    }
+  }
+
   protected final def http_get(u: LispContext): LispContext =
     http_call(Request.GET, u)
 
@@ -170,14 +253,15 @@ trait IoFunction extends EffectFunction { // I/O bound
   }
 
   protected final def http_call(method: Request.Method, u: LispContext, url: URL): LispContext = {
+    val start = System.currentTimeMillis
     def elements = u.evalElements
     def functionname = elements.functionName
     val req = Request(url, method, Record.empty, Record.empty, Record.empty)
     try {
       val res = u.serviceLogic.httpService(req)
       log_debug(s"http_call: $req => $res")
-      val i = RestIncident(req, res)
-      val r = response_result(res)
+      val i = RestIncident(start, req, res)
+      val r = response_result(req, res)
       if (res.isSuccess)
         u.toResult(r, i)
       else if (res.isNotFound)
@@ -189,21 +273,22 @@ trait IoFunction extends EffectFunction { // I/O bound
     } catch {
       case NonFatal(e) =>
         log_debug(s"http_call: $req => $e")
-        val i = RestIncident(req, e)
+        val i = RestIncident(start, req, e)
         u.toResult(SError(i), i)
     }
   }
 
   protected final def http_call(u: LispContext, req: Request): SExpr = {
+    val start = System.currentTimeMillis
     try {
       val res = u.serviceLogic.httpService(req)
       log_debug(s"http_call: $req => $res")
       if (res.isSuccess)
         u.toSExpr(res)
       else
-        SError(req, res)
+        SError(start, req, res)
     } catch {
-      case NonFatal(e) => SError(req, e)
+      case NonFatal(e) => SError(start, req, e)
     }
   }
 
@@ -277,23 +362,33 @@ trait IoFunction extends EffectFunction { // I/O bound
       )
     }.getOrElse(Record.empty)
 
-  protected final def response_result(p: Response): SExpr = {
-    val string = p.getString getOrElse ""
-    val binary = p.getBinary getOrElse EmptyBag
-    if (p.mime.isHtml)
-      SHtml(string)
-    else if (p.mime.isXml)
-      SXml(string)
-    else if (p.mime.isJson)
-      SJson(string)
-    else if (p.mime.isText)
-      SClob(binary)
+  protected final def response_result(req: Request, p: Response): SExpr = {
+    def string = p.getString orElse p.getBinary.map(_.toText) getOrElse ""
+    def binary = getbinary getOrElse EmptyBag
+    def getbinary: Option[ChunkBag] = p.getBinary orElse p.getString.map(StringBag.create)
+    val mime = if (Strings.blankp(p.mime.name))
+      MimeType.getBySuffix(req.url)
     else
-      SBlob(binary)
+      Some(p.mime)
+    mime.map(m =>
+      if (m.isHtml)
+        SHtml(string)
+      else if (m.isXml)
+        SXml(string)
+      else if (m.isJson)
+        SJson(string)
+      else if (m.isText)
+        p.getString.map(SString).orElse(getbinary.map(SClob.apply)).getOrElse(SNil)
+      else
+        SBlob(binary)
+    ).getOrElse(getbinary.map(SBlob.apply) getOrElse SNil)
   }
 }
 
-trait AsyncIoFunction extends IoFunction { // I/O bound, implicit asynchronous
+trait AsyncIoFunction extends IoFunction { // I/O bound, implicit asynchronous in function
+}
+
+trait SyncIoFunction extends IoFunction { // I/O bound, synchronous is required.
 }
 
 object LispFunction {
@@ -431,7 +526,7 @@ object LispFunction {
     }
   }
 
-  case object PathGet extends EvalFunction {
+  case object PathGet extends EvalFunction with ResolvedParametersFeature {
     import javax.xml.namespace.QName
     import javax.xml.xpath._
     import org.apache.commons.jxpath._
@@ -487,7 +582,7 @@ object LispFunction {
           case mm => RAISE.syntaxErrorFault(s"No xpath both ${m} and ${mm}")
         }
       }
-      val target = SExpr.normalizeAuto(x)
+      val target = x
       _traverse(returntype, xpath, target)
     }
 
@@ -632,11 +727,53 @@ object LispFunction {
   case object Transform extends EvalFunction {
     val specification = FunctionSpecification("transform")
 
-    // override def isDefinedAt(p: LispContext): Boolean =
-    //   is_defined_at(p)
-
     def eval(p: Parameters) = {
-      RAISE.notImplementedYetDefect
+      val (xslt, xml) = p.arguments(0) match {
+        case m: SXsl => p.arguments(1) match {
+          case mm: SXml => (m, mm)
+          case mm => RAISE.syntaxErrorFault(s"No xml: ${mm}")
+        }
+        case m => RAISE.syntaxErrorFault(s"No xslt: ${m}")
+      }
+      _transform(xslt, xml)
+    }
+
+    private def _transform(xslt: SXsl, xml: SXml): SXml = {
+      val r = DomUtils.transform(xslt.dom, xml.dom)
+      SXml(r)
+    }
+  }
+
+  case object Xslt extends LispFunction {
+    val specification = FunctionSpecification("xslt")
+
+    def apply(p: LispContext): LispContext = {
+      val r = eval(p, p.parameters)
+      p.toResult(r)
+    }
+
+    def eval(u: LispContext, p: Parameters) = {
+      val a0 = _resolve(u, p.arguments(0))
+      val a1 = _resolve(u, p.arguments(1))
+      (a0, a1) match {
+        case (l: SXsl, r: IDom) => _xslt(l, r)
+        case (l: IDom, r: SXsl) => _xslt(r, l)
+        case (l, r) => RAISE.syntaxErrorFault(s"Invalid xslt and xml: ${l}, ${r}")
+      }
+    }
+
+    private def _resolve(u: LispContext, p: SExpr): SExpr = p match {
+      case m: IDom => m
+      case m: SUrl => resolve_url(u, m) match {
+        case mm: IDom => mm
+        case mm => RAISE.syntaxErrorFault(s"No xml in : ${m}")
+      }
+      case m => RAISE.syntaxErrorFault(s"No xml: ${m}")
+    }
+
+    private def _xslt(xslt: SXsl, p: IDom): SXml = {
+      val r = DomUtils.transform(xslt.xslt, p.dom) // Caution: xslt.dom doen't work.
+      SXml(r)
     }
   }
 
@@ -645,17 +782,19 @@ object LispFunction {
 
     def apply(p: LispContext) = {
       val a = p.parameters.argument1[SExpr](specification)
-      val maxretry = 3
+      val expr = p.eval(a)
+      val maxretry = 10
       val duration = 1.second
       val backoff = 2.0
-      val retry = LibRetry.create(p.eval(a), maxretry, duration, backoff, _is_io_error)
+      val retry = LibRetry.create(p.eval(expr), maxretry, duration, backoff, _is_io_error)
       val r = retry.run
-      p.toResult(r)
+      val incident: LibIncident = retry.incident
+      p.toResult(r, incident)
     }
 
-    private def _is_io_error(p: SExpr): Boolean = p match {
-      case m: SError => m.exception.map(LibRetry.defaultRetryException).getOrElse(false)
-      case _ => false
+    private def _is_io_error(p: SExpr): LibRetry.Strategy = p match {
+      case m: SError => m.exception.map(LibRetry.defaultRetryException).getOrElse(LibRetry.ErrorStrategy(s"$m"))
+      case _ => LibRetry.SuccessStrategy
     }
   }
 
@@ -686,9 +825,9 @@ object LispFunction {
     //   is_defined_at(p)
 
     def apply(p: LispContext): LispContext = {
-      // println(s"Fetch: $p")
-      val url = p.valueOrArgument1[URL](specification) // TODO file
-      http_get(p, url)
+      val url = p.valueOrArgument1[URL](specification)
+      url_get(p, url)
+      // http_get(p, url)
     }
 
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
@@ -750,6 +889,18 @@ object LispFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
+  case object RecordMake extends IoFunction {
+    val specification = FunctionSpecification("record-make", 1)
+
+    def apply(u: LispContext): LispContext = {
+      val a = normalize_auto(u, u.parameters.head)
+      val r = record_make(u, a)
+      u.toResult(r)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
   case object TableLoad extends IoFunction {
     val specification = FunctionSpecification("table-load", 1)
 
@@ -766,7 +917,7 @@ object LispFunction {
     val specification = FunctionSpecification("table-make", 1)
 
     def apply(u: LispContext): LispContext = {
-      val a = u.parameters.head
+      val a = normalize_auto(u, u.parameters.head)
       val r = table_make(u, a)
       u.toResult(r)
     }

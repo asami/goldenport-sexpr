@@ -22,7 +22,8 @@ import org.goldenport.sexpr.eval.LogicalTokensReader
  *  version Aug. 30, 2018
  *  version Sep.  9, 2018
  *  version Feb. 16, 2019
- * @version Apr. 13, 2019
+ *  version Apr. 13, 2019
+ * @version Jul. 16, 2019
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -167,6 +168,8 @@ object SExprParserNew extends Parsers {
     println(s"apply $in")
     parse(LogicalTokens.parseSexpr(in.toString))
   }
+
+  def parse(in: LogicalToken): SExpr = parse(LogicalTokens(in))
 
   def parse(in: LogicalTokens): SExpr = {
     println(s"SExprParserNew#parse $in")

@@ -16,14 +16,16 @@ import org.goldenport.collection.NonEmptyVector
 import org.goldenport.matrix.IMatrix
 import org.goldenport.table.ITable
 import org.goldenport.record.v2.Schema
-import org.goldenport.record.v3.{IRecord}
+import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.record.store.Query
 import org.goldenport.value._
 import org.goldenport.values.Urn
 import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource}
-import org.goldenport.bag.ChunkBag
+import org.goldenport.bag.{ChunkBag, StringBag}
 import org.goldenport.xml.dom.{DomParser, DomUtils}
+import org.goldenport.parser.{LogicalToken, ParseResult}
+import org.goldenport.xsv.Lxsv
 import org.goldenport.util.StringUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
 import org.goldenport.sexpr.eval.chart.Chart
@@ -46,11 +48,13 @@ import org.goldenport.sexpr.eval.chart.Chart
  *  version Feb. 24, 2019
  *  version Mar. 30, 2019
  *  version Apr. 20, 2019
- * @version May. 21, 2019
+ *  version May. 21, 2019
+ *  version Jun. 30, 2019
+ * @version Jul. 29, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
-  override def toString(): String = show
+  override def toString(): String = display
   def isNilOrFalse: Boolean = false
   def getList: Option[List[SExpr]] = None
   //  def asNumber: SNumber = RAISE.unsupportedOperationFault(s"Not number(${this})")
@@ -66,19 +70,44 @@ sealed trait SExpr {
   def asUri: URI = getString.map(new URI(_)).getOrElse(RAISE.unsupportedOperationFault(s"Not URI(${this})"))
   def getInputSource: Option[InputSource] = getString.map(StringInputSource(_))
   def resolve: SExpr = this
-  def print: String = try {
-    SExpr.toPrint(print_String) // 1 line. for interaction representation (e.g. REPL)
+
+  /* Natural representation for data. Show as-is even large data. */
+  /* SString("apple") => apple */
+  final def print: String = try {
+    SExpr.toPrint(print_String)
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#print[$e]"
   }
   protected def print_String: String = getString getOrElse title
-  final def display: String = try {
+
+  /* Literal representation in Programming Language. */
+  /* SString("apple") => "apple" */
+  final def literal: String = literal_String
+
+  protected def literal_String: String = print
+
+  /* Exchange format over media like file or network. */
+  /* SString("apple") => apple */
+  final def marshall: String = marshall_String
+
+  protected def marshall_String: String = literal
+
+  /* 1 line representation for interaction representation (e.g. REPL). */
+  /* SString("apple") => "apple" */
+  def display: String = try {
     SExpr.toDisplay(display_String)
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#display[$e]"
   }
-  protected def display_String: String = print_String
-  def titleName: String = getClass.getSimpleName
+  protected def display_String: String = literal
+  private lazy val _title_name = {
+    val s = getClass.getSimpleName
+    if (s(0) == 'S')
+      s.tail
+    else
+      s
+  }
+  def titleName: String = _title_name
   def titleInfo: String = ""
   def titleDescription: String = ""
   lazy val title = titleInfo match {
@@ -93,13 +122,21 @@ sealed trait SExpr {
       case (i, d) => s"${titleName}[$i]: $d"
     }
   }
+
+  /* Show a shortened natural representation with some information for debug. */
+  /* SString("apple") => SString[5]: apple */
   final def show: String = try {
-    show_Content.fold(s"$longTitle")(s => s"${title}\n${SExpr.toShow(s)}")
+    show_Content.fold(s"$longTitle")(s => s"${longTitle}\n${SExpr.toShow(s)}")
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#show[$e]"
   }
   protected def show_Content: Option[String] = getString // for debug
+
   private lazy val _description = _full_description.toShort
+
+  /*
+   * Show natural description of the data.
+   */
   def description: SExpr.Description = _description
   def descriptionContent: Seq[String] = SExpr.toFull(getString)
   private lazy val _full_description = {
@@ -109,6 +146,10 @@ sealed trait SExpr {
     else
       SExpr.Description(title, c)
   }
+
+  /*
+   * Show full description of the data.
+   */
   def fullDescription: SExpr.Description = _full_description
 
   // def detail: Vector[String] = detailTitle +: detailContent
@@ -129,6 +170,10 @@ sealed trait SExpr {
   def cdrOrRaise: SExpr = RAISE.syntaxErrorFault(s"$this")
 
   protected final def cut_string(p: String) = Strings.cutstring(p, 32)
+}
+
+trait IDom { self: SExpr =>
+  def dom: org.w3c.dom.Node
 }
 
 case class SAtom(name: String) extends SExpr {
@@ -228,8 +273,10 @@ case class SString(string: String) extends SExpr {
   override def toString() = s"SString($string)"
   override def getString = Some(string)
   override def asString = string
-  // lazy val print = SExpr.toPrint(string)
-  // lazy val show = SExpr.toShow(string) // toStringLiteral(cut_string(string))
+  override protected def print_String = string
+  override protected def literal_String = SExpr.toStringLiteral(string)
+  override protected def marshall_String = string
+  override protected def display_String = literal_String
   override def titleInfo = s"${string.length}"
 }
 
@@ -334,12 +381,12 @@ object SError {
   def apply(p: String): SError = SError(Some(p), None, None, None)
   def apply(p: Throwable): SError = SError(None, Some(p), None, None)
   def apply(label: String, e: Throwable): SError = SError(Some(label), Some(e), None, None)
-  def apply(req: Request, res: Response): SError = {
-    val i = RestIncident(req, res)
+  def apply(start: Long, req: Request, res: Response): SError = {
+    val i = RestIncident(start, req, res)
     SError(None, None, Some(i), None)
   }
-  def apply(req: Request, e: Throwable): SError = {
-    val i = RestIncident(req, e)
+  def apply(start: Long, req: Request, e: Throwable): SError = {
+    val i = RestIncident(start, req, e)
     SError(None, Some(e), Some(i), None)
   }
   // def apply(p: Response): SError = SError(None, None, None, Some(p), None)
@@ -397,6 +444,12 @@ object SError {
   def syntaxError(p: String): SError = SError(p)
 }
 
+case class SException() extends SExpr {
+}
+
+case class SLongJump() extends SExpr {
+}
+
 case class SMetaCommand(command: String, args: List[String]) extends SExpr {
   // def print = show
   // def show = toString
@@ -409,7 +462,8 @@ object SMetaCommand {
 }
 
 case class SConsoleOutput(output: String) extends SExpr {
-  override def print = output
+  override protected def print_String = output
+  override def display = output
   override protected def show_Content = Some(output)
 }
 
@@ -474,6 +528,9 @@ case class SClob(bag: ChunkBag) extends SExpr {
   // def show = "Bag()"
   def text = bag.toText
 }
+object SClob {
+  def apply(p: String): SClob = SClob(new StringBag(p))
+}
 
 case class SBlob(bag: ChunkBag) extends SExpr {
   override def getString = bag.toTextTry.toOption
@@ -510,17 +567,59 @@ case class SRecord(record: IRecord) extends SExpr {
   override protected def print_String = record.print
   override protected def show_Content = Some(record.show)
 }
+object SRecord {
+  def create(p: Lxsv): SRecord = SRecord(Record.create(p))
+
+  def parseLxsv(p: String): ParseResult[SRecord] = Lxsv.parseToken(p).map(create)
+}
 
 case class STable(table: ITable) extends SExpr {
-  override def getString = Some(table.toString)
-  // def print = show
-  // def show = table.toString
+  override def getString = Some(print)
+  override val titleInfo = s"${table.width}x${table.height}"
+  override protected def print_String = table.print
+  override protected def display_String = table.display
+  override protected def show_Content: Option[String] = Some(table.show)
 }
 
 case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
   override def getString = Some(matrix.toString)
   // def print = show
   // def show = matrix.toString
+}
+object SMatrix {
+  import org.goldenport.matrix._
+
+  def create2d(prefix: Option[String], p: String): SMatrix = _matrix_2d(p)
+
+  def create1d(prefix: Option[String], p: String): SMatrix = _matrix_1d(prefix, p)
+
+  private def _matrix_1d(prefix: Option[String], p: String): SMatrix =
+    prefix.map {
+      case "v" => _matrix_1d_vertical(p)
+      case "vertical" => _matrix_1d_vertical(p)
+      case _ => _matrix_1d_horizontal(p)
+    }.getOrElse(_matrix_1d_horizontal(p))
+
+  private def _matrix_1d_vertical(p: String) = {
+    val a = Strings.totokens(p).map(_.toDouble)
+    val b = VectorColumnRowMatrix.create(Vector(a))
+    SMatrix(b)
+  }
+
+  private def _matrix_1d_horizontal(p: String) = {
+    val a = Strings.totokens(p).map(_.toDouble)
+    val b = VectorRowColumnMatrix.create(Vector(a))
+    SMatrix(b)
+  }
+
+  private def _matrix_2d(p: String) = {
+    val a = p.dropWhile(_ == '[')
+    val b = a.takeWhile(_ != ']')
+    val c = Strings.tolines(b)
+    val d = c.map(x => Strings.totokens(x).map(_.toDouble))
+    val e = VectorRowColumnMatrix.create(d)
+    SMatrix(e)
+  }
 }
 
 case class SUrl(url: java.net.URL) extends SExpr {
@@ -531,6 +630,13 @@ case class SUrl(url: java.net.URL) extends SExpr {
   override def getInputSource = Some(UrlInputSource(url))
   // def print = show
   // def show = url.toString
+
+  def getSuffix: Option[String] = Option(url.getFile).flatMap(StringUtils.getSuffix)
+
+  def isXmlFamily = isXml || isHtml || isXsl
+  def isXml = getSuffix.map(_ == SXml.suffix) getOrElse false
+  def isHtml = getSuffix.map(_ == SHtml.suffix) getOrElse false
+  def isXsl = getSuffix.map(_ == SXsl.suffix) getOrElse false
 }
 
 case class SUrn(urn: Urn) extends SExpr {
@@ -586,7 +692,7 @@ case class SBean(o: AnyRef) extends SExpr { // JavaBeans
   // def show = o.toString
 }
 
-sealed trait SXml extends SExpr {
+sealed trait SXml extends SExpr with IDom {
   override def equals(o: Any): Boolean = o match {
     case o: SXml => text == o.text
     case _ => false
@@ -595,26 +701,30 @@ sealed trait SXml extends SExpr {
   def dom: org.w3c.dom.Node
 }
 object SXml {
+  val suffix = "xml"
+
   def apply(p: String): SXml = StringSXml(p)
   def apply(p: org.w3c.dom.Node): SXml = DomSXml(p)
 
   def createOption(p: String): Option[SXml] = Try(apply(DomParser.parse(p))).toOption
 }
 case class StringSXml(text: String) extends SXml {
+  override val titleName = "XML(String)"
   override def getString = Some(text)
-  // def print = text
+  override protected def print_String = text
   // def show = s"Xml(${cut_string(text)})"
   lazy val dom = DomParser.parse(text)
 }
 case class DomSXml(dom: org.w3c.dom.Node) extends SXml {
+  override val titleName = "XML(DOM)"
   override def toString(): String = text
   lazy val text: String = DomUtils.toText(dom)
   override def getString = Some(text)
-  // def print = text
+  override protected def print_String = text
   // def show = s"Xml(${cut_string(text)})"
 }
 
-case class SHtml(dom: org.w3c.dom.Node) extends SExpr {
+case class SHtml(dom: org.w3c.dom.Node) extends SExpr with IDom {
   override def equals(o: Any): Boolean = o match {
     case m: SHtml => text == m.text
     case _ => false
@@ -622,10 +732,12 @@ case class SHtml(dom: org.w3c.dom.Node) extends SExpr {
   lazy val text: String = DomUtils.toText(dom)
   override def getString = Some(text)
   override def asString = text
-  // def print = show
+  override protected def print_String = text
   // def show = html
 }
 object SHtml {
+  val suffix = "html"
+
   def apply(p: String): SHtml = SHtml(DomUtils.parseHtmlLowerCase(p)) // FUTURE : case sensitive
 
   private val _doctype_regex = "<!DOCTYPE[ ]+html ".r
@@ -651,12 +763,28 @@ case class SXPath(path: String) extends SExpr {
   // def show = s"XPath($path)"
 }
 
-case class SXslt(xslt: String) extends SExpr {
+case class SXsl(xslt: String) extends SExpr with IDom {
   override def getString = Some(xslt)
   override def asString = xslt
   // def print = xslt
   // def show = s"XSLT(${cut_string(xslt)})"
-  lazy val dom: org.w3c.dom.Node = RAISE.notImplementedYetDefect
+  lazy val dom: org.w3c.dom.Node = DomUtils.parseXml(xslt)
+}
+object SXsl {
+  val suffix = "xsl"
+  private val _doctype_regex = "<!DOCTYPE[ ]+html ".r
+
+  def createOption(p: String): Option[SXsl] = {
+    Try {
+      if (_doctype_regex.findFirstIn(p).isDefined ||
+        p.startsWith("<html>") ||
+        p.startsWith("<html ")
+      )
+        Some(apply(p))
+      else
+        None
+    }.toOption.flatten
+  }
 }
 
 case class SPug(pug: String) extends SExpr {
@@ -682,11 +810,13 @@ object SJson {
   def createOption(p: String): Option[SJson] = Try(JsValueSJson(Json.parse(p))).toOption
 }
 case class StringSJson(text: String) extends SJson {
+  override val titleName = "JSON(String)"
   // def print = SExpr.toPrint(text)
   // def show = text
   lazy val json = Json.parse(text)
 }
 case class JsValueSJson(json: JsValue) extends SJson {
+  override val titleName = "JSON(JsValue)"
   lazy val text = json.toString
 }
 // case class JsObjectSJson(o: JsObject) extends SJson {
@@ -967,6 +1097,7 @@ object SExpr {
     case m: BigInt => SNumber(BigDecimal(m))
     case m: java.math.BigDecimal => SNumber(BigDecimal(m))
     case m: BigDecimal => SNumber(m)
+    case m: IRecord => SRecord(m)
     case m: org.w3c.dom.Node => SXml(m)
     // case m: org.w3c.dom.NodeList => m.getLength match {
     //   case 0 => SNil
@@ -984,6 +1115,7 @@ object SExpr {
     case JsString(v) => SString(v)
     case m: JsObject => SJson(m)
     case JsArray(vs) => SList.create(vs.map(SExpr.create))
+    case m: LogicalToken => SExprParserNew.parse(m)
     case m => RAISE.notImplementedYetDefect(s"SExpr#create(${m})") // SObject(m) // TODO
   }
 
@@ -993,6 +1125,8 @@ object SExpr {
   def create(s: CreateStrategy, p: Any): SExpr = s match {
     case AutoCreate => p match {
       case m: String => createAuto(m)
+      case m: SUrl => createAuto(m)
+      case m: SUrn => createAuto(m)
       case m: SExpr => normalizeAuto(m)
       case m => create(p)
     }
@@ -1000,16 +1134,22 @@ object SExpr {
   }
 
   def createAuto(p: String): SExpr = p.headOption.flatMap {
-    case '<' => createHtmlOrXmlOption(p)
+    case '<' => createXmlFamilyOption(p)
     case '{' => SJson.createOption(p)
   }.getOrElse(create(p))
 
-  def createHtmlOrXmlOption(p: String): Option[SExpr] = SHtml.createOption(p) orElse SXml.createOption(p)
+  def createAuto(p: SUrl): SExpr = create(p) // Should be resolved in LispContext.
+  def createAuto(p: SUrn): SExpr = create(p) // Should be resolved in LispContext.
+
+  def createXmlFamilyOption(p: String): Option[SExpr] =
+    SHtml.createOption(p) orElse SXsl.createOption(p) orElse SXml.createOption(p)
 
   def normalizeAuto(p: SExpr): SExpr = p match {
     case m: SString => createAuto(m.string)
     case m: SClob => m.getString.map(createAuto).getOrElse(create(m))
     case m: SBlob => m.getString.map(createAuto).getOrElse(create(m))
+    case m: SUrl => createAuto(m)
+    case m: SUrn => createAuto(m)
     case m => m
   }
 
@@ -1059,10 +1199,7 @@ object SExpr {
     "\"" + escapeString(s) + "\""
   }
 
-  def toPrint(s: String): String = {
-    val a = escapeNewlines(Strings.cutstring(s, 76))
-    StringUtils.dropRightNewlines(a)
-  }
+  def toPrint(s: String): String = s
 
   def toDisplay(s: String): String = {
     val a = escapeNewlines(Strings.cutstring(s, 76))
@@ -1072,7 +1209,7 @@ object SExpr {
   def toShow(s: Option[String]): String = s.map(toShow).getOrElse("")
 
   def toShow(s: String): String = {
-    val a = Strings.cutstring(s, 1024)
+    val a = StringUtils.showConsole(s, "\n")
     StringUtils.dropRightNewlines(a)
   }
 

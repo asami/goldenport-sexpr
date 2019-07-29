@@ -15,7 +15,9 @@ import org.goldenport.sexpr._
  *  version Jan.  3, 2019
  *  version Feb. 24, 2019
  *  version Mar.  9, 2019
- * @version May. 21, 2019
+ *  version May. 21, 2019
+Literal *  version Jun. 30, 2019
+Literal * @version Jul. 25, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -106,6 +108,7 @@ object Script {
         case m: SpaceToken => handle_Space(config, m)
         case m: SingleQuoteToken => handle_Single_Quote(config, m)
         case m: LiteralToken => handle_Literal(config, m)
+        case m: EmptyToken => handle_Empty(config, m)
       }
 
     protected def handle_End(config: Config): Transition = RAISE.noReachDefect(getClass.getSimpleName)
@@ -134,6 +137,9 @@ object Script {
 
     protected def handle_Literal(config: Config, t: LiteralToken): Transition = 
       (ParseMessageSequence.empty, ParseResult.empty, literal_State(config, t))
+
+    protected def handle_Empty(config: Config, t: EmptyToken): Transition = 
+      (ParseMessageSequence.empty, ParseResult.empty, this)
 
     protected def literal_State(config: Config, t: LiteralToken): ScriptParseState =
       t match {
@@ -165,13 +171,16 @@ object Script {
         case m: PathToken => add_Sexpr(config, SXPath(m.path))
         case m: ExpressionToken => add_Sexpr(config, SExpression(m.text))
         case m: ExplicitLiteralToken => RAISE.notImplementedYetDefect
-        case m: ScriptToken => add_Sexpr(config, SScript(m.text))
+        case m: ScriptToken => add_Sexpr(config, SScript(m.prefix, m.text))
         case m: XmlToken => add_Sexpr(config, SXml(m.text))
         case m: JsonToken => add_Sexpr(config, SJson(m.text))
-        case m: BracketToken => add_Sexpr(config, SScript(m.prefix, m.text)) // TODO matrix
-        case m: RawBracketToken => add_Sexpr(config, SScript(m.prefix, m.text)) // TODO matrix
+        case m: BracketToken => add_Sexpr(config, SMatrix.create1d(m.prefix, m.text))
+        case m: DoubleBracketToken => add_Sexpr(config, SMatrix.create2d(m.prefix, m.text))
+        case m: RawBracketToken => RAISE.unsupportedOperationFault(s"$m")
         case m: SingleQuoteToken => add_Sexpr(config, SSingleQuote()) // no reach
         case m: ExternalLogicalToken => RAISE.noReachDefect(getClass.getSimpleName)
+        case m: XsvToken => add_Sexpr(config, SMatrix.create1d(None, m.text))
+        case m: LxsvToken => add_Sexpr(config, SRecord.create(m.lxsv))
       }
 
     private def _from_string(p: StringToken) =
@@ -181,7 +190,7 @@ object Script {
         case "xml" => SXml(p.text)
         case "html" => SHtml(p.text)
         case "xpath" => SXPath(p.text)
-        case "xslt" => SXslt(p.text)
+        case "xsl" => SXsl(p.text)
         case "json" => SJson(p.text)
         case "pug" => SPug(p.text)
         // case "datetime" => SDateTime(p.text)

@@ -15,7 +15,8 @@ import org.goldenport.sexpr._
  *  version Oct. 12, 2018
  *  version Feb. 27, 2019
  *  version Mar.  4, 2019
- * @version Apr. 12, 2019
+ *  version Apr. 12, 2019
+ * @version Jun.  9, 2019
  * @author  ASAMI, Tomoharu
  */
 case class DynamicServiceFunction(
@@ -41,6 +42,7 @@ case class DynamicServiceFunction(
   }
 
   private def _invoke_shell_command(p: LispContext): Option[LispContext] = {
+    val start = System.currentTimeMillis
     val elements = p.evalElements
     val name = elements.functionName
     val commands = name :: elements.parameters.asStringList
@@ -50,9 +52,9 @@ case class DynamicServiceFunction(
     val w = SWait(name, { () =>
       val code = result.waitFor
       if (code == 0)
-        _success(p, result)
+        _success(start, p, result)
       else
-        _failure(p, result)
+        _failure(start, p, result)
     })
     val r = w.resolveContext
     r.incident.flatMap {
@@ -65,18 +67,18 @@ case class DynamicServiceFunction(
     }
   }
 
-  private def _success(c: LispContext, p: ShellCommand.Result) = {
-    val (incident, stdout) = _properties(p)
+  private def _success(start: Long, c: LispContext, p: ShellCommand.Result) = {
+    val (incident, stdout) = _properties(start, p)
     c.toResult(stdout, incident)
   }
 
-  private def _failure(c: LispContext, p: ShellCommand.Result) = {
-    val (incident, _) = _properties(p)
+  private def _failure(start: Long, c: LispContext, p: ShellCommand.Result) = {
+    val (incident, _) = _properties(start, p)
     val error = SError(s"Shell Command: ${p.waitFor}", incident)
     c.toResult(error, incident)
   }
 
-  private def _properties(p: ShellCommand.Result): (Incident, SBlob) = {
+  private def _properties(start: Long, p: ShellCommand.Result): (Incident, SBlob) = {
     // val retval = SNumber(p.waitFor)
     val stdout = SBlob(p.stdout)
     // val stderr = SBlob(p.stderr)
@@ -85,7 +87,7 @@ case class DynamicServiceFunction(
     //   "stdout" -> stdout,
     //   "stderr" -> stderr
     // )
-    val a = ShellCommandIncident(p)
+    val a = ShellCommandIncident(start, p)
     (a, stdout)
   }
 

@@ -3,7 +3,8 @@ package org.goldenport.sexpr.eval
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
 import org.goldenport.RAISE
-import org.goldenport.record.v3.{Record, RecordSequence}
+import org.goldenport.record.v2.{Schema}
+import org.goldenport.record.v3.{IRecord, Record, RecordSequence}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.sexpr._
@@ -15,7 +16,8 @@ import org.goldenport.value._
  *  version Oct. 28, 2018
  *  version Mar. 24, 2019
  *  version Apr.  6, 2019
- * @version May. 21, 2019
+ *  version May. 21, 2019
+ * @version Jul. 25, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -74,7 +76,11 @@ case class Parameters(
 
   def isSwitch(p: Symbol): Boolean = switches.contains(p)
 
+  def map(f: SExpr => SExpr): Parameters = copy(arguments = arguments.map(f))
+
   def pop: Parameters = copy(arguments = arguments.tail)
+
+  def pop(count: Int): Parameters = copy(arguments = arguments.take(count))
 }
 object Parameters {
   def apply(p: SList): Parameters = apply(p.list)
@@ -117,6 +123,9 @@ object Parameters {
 
     protected def to_result_pop[T](newspec: FunctionSpecification, r: ValidationNel[SError, T]): (Cursor, ValidationNel[SError, T]) =
       (copy(spec = newspec, parameters = parameters.pop), r)
+
+    protected def to_result_pop[T](newspec: FunctionSpecification, r: ValidationNel[SError, T], count: Int): (Cursor, ValidationNel[SError, T]) =
+      (copy(spec = newspec, parameters = parameters.pop(count)), r)
 
     protected def to_success[T](newspec: FunctionSpecification, r: T): (Cursor, ValidationNel[SError, T]) =
       (copy(spec = newspec), Success(r))
@@ -164,6 +173,18 @@ object Parameters {
       to_result_pop(nextspec, r)
     }
 
+    def schema(p: LispContext): (Cursor, ValidationNel[SError, Schema]) = {
+      val name = parameters.argument1[String](spec)
+      val n = s"model.voucher.$name"
+      val r = p.bindings.get(n).map {
+        case m: SSchema => Success(m.schema).toValidationNel
+        case m: Schema => Success(m).toValidationNel
+        case m => RAISE.notImplementedYetDefect
+      }.getOrElse(RAISE.notImplementedYetDefect)
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
     def query: (Cursor, ValidationNel[SError, Query]) = {
       val query = parameters.argument1[Query](spec)
       val r = Success(query).toValidationNel
@@ -174,6 +195,33 @@ object Parameters {
     def record: (Cursor, ValidationNel[SError, Record]) = {
       val rec = parameters.argument1[Record](spec)
       val r = Success(rec).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
+    def records: (Cursor, ValidationNel[SError, RecordSequence]) = {
+      case class Z(rs: Vector[IRecord] = Vector.empty, count: Int = 0, donep: Boolean = false) {
+        def records: RecordSequence = RecordSequence(rs)
+
+        def +(rhs: SExpr) = rhs match {
+          case m: SRecord => copy(rs :+ m.record, count + 1)
+          case m: SCell => _list(m)
+          case m => _done
+        }
+
+        private def _done = copy(donep = true)
+
+        private def _list(p: SCell) = {
+          val xs = p.vector
+          if (xs.forall(_.isInstanceOf[SRecord]))
+            copy(rs ++ xs.collect { case m: SRecord => m.record }, count + 1)
+          else
+            _done
+        }
+      }
+      val z = parameters.arguments./:(Z())(_+_)
+      val rs = z.records
+      val r = Success(rs).toValidationNel
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }

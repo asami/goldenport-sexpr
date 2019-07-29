@@ -1,28 +1,35 @@
 package org.goldenport.sexpr.eval
 
+import java.net.URL
 import org.goldenport.value._
 import org.goldenport.cli.ShellCommand
 import org.goldenport.bag.ChunkBag
+import org.goldenport.i18n.I18NString
 import org.goldenport.record.v3.Record
 import org.goldenport.record.http
+import org.goldenport.incident.{Incident => LibIncident, ApplicationIncident}
 import org.goldenport.sexpr._
 import Incident._
 
 /*
  * @since   Apr. 12, 2019
- * @version Apr. 19, 2019
+ * @version Jun. 24, 2019
  * @author  ASAMI, Tomoharu
  */
-trait Incident {
+trait Incident extends ApplicationIncident {
   def kind: Kind
   def bindings: Record
   def show: String
 }
 
 case class ShellCommandIncident(
+  start: Long,
+  end: Long,
+  message: Option[I18NString],
   result: Either[Throwable, ShellCommand.Result]
 ) extends Incident {
   val kind = ShellCommandKind
+  def exception = result.left.toOption
 
   lazy val stdout = result match {
     case Right(r) => Some(SBlob(r.stdout))
@@ -65,15 +72,21 @@ case class ShellCommandIncident(
   def isNotFound = stderr.fold(false)(_.text.contains("command not found"))
 }
 object ShellCommandIncident {
-  def apply(result: ShellCommand.Result): ShellCommandIncident = ShellCommandIncident(Right(result))
-  def apply(e: Throwable): ShellCommandIncident = ShellCommandIncident(Left(e))
+  def apply(start: Long, result: ShellCommand.Result): ShellCommandIncident =
+    ShellCommandIncident(start, System.currentTimeMillis, None, Right(result))
+  def apply(start: Long, e: Throwable): ShellCommandIncident =
+    ShellCommandIncident(start, System.currentTimeMillis, None, Left(e))
 }
 
 case class RestIncident(
+  start: Long,
+  end: Long,
+  message: Option[I18NString],
   request: http.Request,
   response: Either[Throwable, http.Response]
 ) extends Incident {
   val kind = ShellCommandKind
+  def exception = response.left.toOption
 
   val code = response match {
     case Right(r) => SNumber(r.code)
@@ -105,11 +118,41 @@ case class RestIncident(
   }
 }
 object RestIncident {
-  def apply(req: http.Request, res: http.Response): RestIncident =
-    RestIncident(req, Right(res))
+  def apply(start: Long, req: http.Request, res: http.Response): RestIncident =
+    RestIncident(start, System.currentTimeMillis, None, req, Right(res))
 
-  def apply(req: http.Request, e: Throwable): RestIncident =
-    RestIncident(req, Left(e))
+  def apply(start: Long, req: http.Request, e: Throwable): RestIncident =
+    RestIncident(start, System.currentTimeMillis, None, req, Left(e))
+}
+
+case class FileIncident(
+  start: Long,
+  end: Long,
+  message: Option[I18NString],
+  url: URL,
+  result: Either[Throwable, ChunkBag]
+) extends Incident {
+  val kind = FileKind
+  def exception = result.left.toOption
+
+  lazy val bindings: Record = Record.data(
+    PROP_INCIDENT_KIND -> SString(kind.name),
+    PROP_URL -> SUrl(url)
+  )
+
+  def show = s"${url} => ${_show_result}"
+
+  private def _show_result = result match {
+    case Left(e) => e.toString
+    case Right(res) => res.toString
+  }
+}
+object FileIncident {
+  def apply(start: Long, url: URL, res: ChunkBag): FileIncident =
+    FileIncident(start, System.currentTimeMillis, None, url, Right(res))
+
+  def apply(start: Long, url: URL, e: Throwable): FileIncident =
+    FileIncident(start, System.currentTimeMillis, None, url, Left(e))
 }
 
 object Incident {
@@ -117,10 +160,11 @@ object Incident {
   final val PROP_IS_SUCCESS = "is-success"
   final val PROP_RETURN_VALUE = "return-value"
   final val PROP_RETURN_CODE = "return-code"
+  final val PROP_URL = "url"
 
   trait Kind extends NamedValueInstance
   object Kind extends EnumerationClass[Kind] {
-    val elements = Vector(ShellCommandKind, RestKind)
+    val elements = Vector(ShellCommandKind, RestKind, FileKind)
   }
 
   case object ShellCommandKind extends Kind {
@@ -129,5 +173,9 @@ object Incident {
 
   case object RestKind extends Kind {
     val name = "rest"
+  }
+
+  case object FileKind extends Kind {
+    val name = "file"
   }
 }

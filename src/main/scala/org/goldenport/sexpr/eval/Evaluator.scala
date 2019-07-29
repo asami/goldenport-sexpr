@@ -19,7 +19,8 @@ import org.goldenport.sexpr._
  *  version Feb. 28, 2019
  *  version Mar. 10, 2019
  *  version Apr. 20, 2019
- * @version May.  3, 2019
+ *  version May.  3, 2019
+ * @version Jul. 25, 2019
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator[C <: EvalContext] extends Loggable {
@@ -86,7 +87,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case x: SXml => eval_xml(x)
       case m: SHtml => m
       case m: SXPath => m
-      case m: SXslt => m
+      case m: SXsl => m
       case m: SPug => m
       case j: SJson => eval_json(j)
       case m: SExpression => eval_expression(m)
