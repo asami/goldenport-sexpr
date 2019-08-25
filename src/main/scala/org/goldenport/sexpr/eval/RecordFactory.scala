@@ -14,7 +14,7 @@ import org.goldenport.sexpr._
 /*
  * @since   Apr. 20, 2019
 failure: NoSuccess *  version May.  9, 2019
-failure: NoSuccess * @version Jul. 29, 2019
+failure: NoSuccess * @version Jul. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 case class RecordFactory(config: RichConfig) {
@@ -42,10 +42,7 @@ case class RecordFactory(config: RichConfig) {
     case NonFatal(e) => Failure(e).toValidationNel
   }
 
-  def unmarshall(p: JsValue): Record = Record.create(p) match {
-    case Left(rs) => RAISE.notImplementedYetDefect
-    case Right(r) => r
-  }
+  def unmarshall(p: JsValue): Record = Record.create(p)
 
   def unmarshallValidation(p: SExpr): ValidationNel[Throwable, Record] = try {
     Success(RecordFactory.SExprRecordParser.parse(p))

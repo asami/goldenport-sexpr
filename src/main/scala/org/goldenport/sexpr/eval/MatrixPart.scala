@@ -12,7 +12,8 @@ import org.goldenport.sexpr.eval.chart.Chart
 /*
  * @since   Feb.  9, 2019
  *  version Feb. 12, 2019
- * @version Mar. 10, 2019
+ *  version Mar. 10, 2019
+ * @version Aug.  4, 2019
  * @author  ASAMI, Tomoharu
  */
 trait MatrixPart { self: LispFunction =>
@@ -48,7 +49,7 @@ trait MatrixPart { self: LispFunction =>
       withXLabel("x axis").
       withYLabel("y axis")
     val plots = Vector.empty
-    val space = S2DSpace(plots, chart)
+    val space = S2DSpace("XY", plots, chart)
     u.feature.chart.draw(space)
   }
 }

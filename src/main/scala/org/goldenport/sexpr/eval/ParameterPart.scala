@@ -15,7 +15,8 @@ import Parameters.Cursor
  * @since   Mar. 31, 2019
  *  version Apr. 20, 2019
  *  version May. 14, 2019
- * @version Jul. 14, 2019
+ *  version Jul. 14, 2019
+ * @version Aug.  3, 2019
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -33,6 +34,8 @@ trait ParameterPart { self: LispContext =>
     def schema(p: LispContext) = State[Cursor, ValidationNel[SError, Schema]](_.schema(p))
 
     def query = State[Cursor, ValidationNel[SError, Query]](_.query)
+
+    def queryDefault = State[Cursor, ValidationNel[SError, Query]](_.queryDefault)
 
     def record = State[Cursor, ValidationNel[SError, Record]](_.record)
 

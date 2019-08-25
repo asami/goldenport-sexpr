@@ -30,7 +30,8 @@ import org.goldenport.sexpr._
  * XYPlot
  * 
  * @since   Mar. 16, 2019
- * @version Mar. 18, 2019
+ *  version Mar. 18, 2019
+ * @version Aug.  4, 2019
  * @author  ASAMI, Tomoharu
  */
 class JFreeChartDriver() extends ChartDriver {
@@ -100,7 +101,7 @@ class JFreeChartDriver() extends ChartDriver {
     if (istooltip) {
       val tooltipGenerator = new org.jfree.chart.labels.XYToolTipGenerator() {
         override def generateToolTip(dataset: org.jfree.data.xy.XYDataset, series: Int, item: Int): String = {
-          p.getTooltip(no) getOrElse null
+          p.getTooltip(item) getOrElse null
         }
       }
       renderer.setSeriesToolTipGenerator(no, tooltipGenerator)
@@ -108,7 +109,7 @@ class JFreeChartDriver() extends ChartDriver {
     if (islabel) {
       val labelGenerator = new org.jfree.chart.labels.XYItemLabelGenerator() {
         override def generateLabel(dataset: org.jfree.data.xy.XYDataset, series: Int, item: Int): String = {
-          p.getLabel(no) getOrElse null
+          p.getLabel(item) getOrElse null
         }
       }
       renderer.setSeriesItemLabelGenerator(no, labelGenerator)

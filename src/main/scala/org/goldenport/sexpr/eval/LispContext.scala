@@ -1,6 +1,7 @@
 package org.goldenport.sexpr.eval
 
 import scalaz._, Scalaz._
+import java.net.URI
 import scala.util.control.NonFatal
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Await}
@@ -8,12 +9,14 @@ import scala.concurrent.duration._
 import javax.script.ScriptEngineManager
 import org.goldenport.RAISE
 import org.goldenport.log.LogContext
+import org.goldenport.i18n.I18NContext
 import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.v3.sql.SqlContext
 import org.goldenport.record.unitofwork.interpreter.{UnitOfWorkLogic, StoreOperationLogic}
 import org.goldenport.record.http.Response
 import org.goldenport.log.LogMark._
 import org.goldenport.cli.ShellCommand
+import org.goldenport.io.{ResourceManager, ResourceHandle, ResourceLocator}
 import org.goldenport.incident.{Incident => LibIncident}
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.store.StoreFeature
@@ -28,18 +31,26 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Apr. 12, 2019
  *  version May. 20, 2019
  *  version Jun.  9, 2019
- * @version Jul. 14, 2019
+ *  version Jul. 14, 2019
+ * @version Aug. 17, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
   def config: LispConfig
+  def i18nContext: I18NContext
   def evaluator: LispContext => LispContext
   def serviceLogic: UnitOfWorkLogic
   def storeLogic: StoreOperationLogic
   def scriptContext: ScriptEngineManager
   def sqlContext: SqlContext
+  def resourceManager: ResourceManager
   def feature: FeatureContext
   def incident: Option[LibIncident]
+
+  def locale = i18nContext.locale
+
+  def takeResourceHandle(p: ResourceLocator): ResourceHandle = resourceManager.takeHandle(p)
+  def takeResourceHandle(p: URI): ResourceHandle = resourceManager.takeHandle(p)
 
   def pure(p: SExpr): LispContext
 
@@ -121,7 +132,10 @@ trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
   def pop(n: Int): LispContext = RAISE.unsupportedOperationFault
   def peek: SExpr = RAISE.unsupportedOperationFault
   def peek(n: Int): SExpr = RAISE.unsupportedOperationFault
+  def takeHistory: SExpr = RAISE.unsupportedOperationFault
   def takeHistory(n: Int): SExpr = RAISE.unsupportedOperationFault
+  def takeCommandHistory: SExpr = RAISE.unsupportedOperationFault
+  def takeCommandHistory(n: Int): SExpr = RAISE.unsupportedOperationFault
   def getPipelineIn: Option[SExpr] = None
 
   val futureDuration = 10.minutes // TODO customizable
@@ -177,6 +191,7 @@ object LispContext {
 
   def apply(
     config: LispConfig,
+    i18ncontext: I18NContext,
     evaluator: LispContext => LispContext,
     x: SExpr
   ): LispContext = {
@@ -186,17 +201,20 @@ object LispContext {
       else
         SqlContext.createConnectionPool(config.properties)
     }
+    val resourceManager = new ResourceManager()
     val featurecontext = FeatureContext(
       new StoreFeature(config.properties, sqlcontext),
       ChartFeature.default
     )
     PlainLispContext(
       config,
+      i18ncontext,
       evaluator,
       defaultServiceLogic,
       defaultStoreLogic,
       scriptContext,
       sqlcontext,
+      resourceManager,
       featurecontext,
       x,
       None,
@@ -206,11 +224,13 @@ object LispContext {
 
   case class PlainLispContext(
     config: LispConfig,
+    i18nContext: I18NContext,
     evaluator: LispContext => LispContext,
     serviceLogic: UnitOfWorkLogic,
     storeLogic: StoreOperationLogic,
     scriptContext: ScriptEngineManager,
     sqlContext: SqlContext,
+    resourceManager: ResourceManager,
     feature: FeatureContext,
     value: SExpr,
     incident: Option[LibIncident],

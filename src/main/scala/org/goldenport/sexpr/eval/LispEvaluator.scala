@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import scala.util.control.NonFatal
 import org.goldenport.exception.RAISE
 import org.goldenport.log.LogMark, LogMark._
+import org.goldenport.i18n.I18NContext
 import org.goldenport.record.v3.Record
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.chart.ChartFunction
@@ -25,14 +26,16 @@ import org.goldenport.sexpr.eval.aws.AwsFunction
  *  version Apr. 14, 2019
  *  version May. 26, 2019
  *  version Jun. 24, 2019
- * @version Jul. 28, 2019
+ *  version Jul. 28, 2019
+ * @version Aug. 24, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     with JXPathPart[C] {
   def config: LispConfig
+  def i18nContext: I18NContext
   protected def create_Eval_Context(): C = create_Eval_Context(SNil)
-  protected def create_Eval_Context(x: SExpr): C = LispContext(config, apply_context, x).asInstanceOf[C]
+  protected def create_Eval_Context(x: SExpr): C = LispContext(config, i18nContext, apply_context, x).asInstanceOf[C]
   protected def create_Eval_Context(xs: List[SExpr]): C = create_Eval_Context(SList.create(xs))
   protected def reduction_Context(xs: Seq[C]): C = create_Eval_Context(xs.toList.map(_.value))
   protected def lift_Context(c: EvalContext): C = c.asInstanceOf[C]
@@ -167,7 +170,7 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     // println(s"LispEvaluator#evel_context: ${c.bindings}")
     // println(s"LispEvaluator#evel_context: ${c.value}")
     val r: SExpr = c.value match {
-      case SAtom(name) => c.getBindedValue(name).getOrElse(SError.bindingNotFound(name))
+      case m: SAtom => eval_Atom(m).orElse(c.getBindedValue(m.name)).getOrElse(SError.bindingNotFound(m.name))
       case m @ SCell(car, _) if car.isInstanceOf[SCell] => SError.Unevaluatable(m)
       // case m: SCell => eval(m)
       // case m => m
@@ -193,8 +196,9 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   }
 }
 object LispEvaluator {
-  def apply(p: LispConfig): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
+  def apply(p: LispConfig, i18ncontext: I18NContext): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
     val config = p
+    val i18nContext = i18ncontext
     init_binding(LispBinding())
   }
 }
@@ -216,7 +220,10 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
     Vector(
       EvalOrInvoke, Quote, Setq,
       Pop, Peek, Mute, History, CommandHistory,
-      Car, Cdr, And, Or, Plus, Length, PathGet, Transform, Xslt,
+      Car, Cdr, And, Or,
+      Plus, Minus,
+      Length,
+      PathGet, Transform, Xslt,
       Fetch, Retry, Sh,
       HttpGet, HttpPost, HttpPut, HttpDelete,
       MatrixLoad, MatrixChart,

@@ -9,14 +9,13 @@ import java.net.{URL, URI}
 import play.api.libs.json._
 import org.goldenport.Strings
 import org.goldenport.exception.RAISE
-import org.goldenport.record.v3.Record
+import org.goldenport.record.v3.{Record, ITable}
 import org.goldenport.record.unitofwork._
 import org.goldenport.record.unitofwork.UnitOfWork._
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.io.{MimeType, UrlUtils, Retry => LibRetry}
 import org.goldenport.sexpr._, SExprConverter._
 import org.goldenport.matrix.IMatrix
-import org.goldenport.table.ITable
 import org.goldenport.bag.{EmptyBag, ChunkBag, StringBag}
 import org.goldenport.xml.dom.DomUtils
 import org.goldenport.log.Loggable
@@ -33,7 +32,8 @@ import org.goldenport.incident.{Incident => LibIncident}
  *  version Apr. 22, 2019
  *  version May. 26, 2019
  *  version Jun. 30, 2019
- * @version Jul. 28, 2019
+ *  version Jul. 28, 2019
+ * @version Aug. 25, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -82,6 +82,10 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
         val i = FileIncident(start, url, e)
         SError(i)
     }
+  }
+
+  protected final def resolve_uri(u: LispContext, uri: URI): SExpr = {
+    ???
   }
 
   protected final def file_fetch(u: LispContext, url: URL): LispContext = {
@@ -468,6 +472,25 @@ object LispFunction {
 
   case object Plus extends EvalFunction {
     val specification = FunctionSpecification("+", 2)
+    def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
+    //   SNumber(p.asBigDecimalList.sum)
+    // }
+
+    @annotation.tailrec
+    private def _go(p: SExpr, ps: List[SExpr]): SExpr = ps match {
+      case Nil => p
+      case x :: xs => _go(_plus(p, x), xs)
+    }
+
+    private def _plus(l: SExpr, r: SExpr): SExpr = (l, r) match {
+      case (ml: SNumber, mr: SNumber) => ml + mr
+      case (ml: SMatrix, mr: SMatrix) => ml + mr
+      case _ => SError(s"Invalid number or matrix: $l, $r")
+    }
+  }
+
+  case object Minus extends EvalFunction {
+    val specification = FunctionSpecification("-", 2)
     def eval(p: Parameters) = {
       SNumber(p.asBigDecimalList.sum)
     }
@@ -511,7 +534,7 @@ object LispFunction {
     val specification = FunctionSpecification("history")
     def apply(p: LispContext): LispContext = {
       val params = p.parameters
-      val r = params.getArgument1[Int](specification).map(x => p.takeHistory(x)).getOrElse(p.peek)
+      val r = params.getArgument1[Int](specification).map(x => p.takeHistory(x)).getOrElse(p.takeHistory(1))
       p.toResult(r)
     }
   }
@@ -521,7 +544,7 @@ object LispFunction {
     val specification = FunctionSpecification("command-history")
     def apply(p: LispContext): LispContext = {
       val params = p.parameters
-      val r = params.getArgument1[Int](specification).map(x => p.takeHistory(x)).getOrElse(p.peek)
+      val r = params.getArgument1[Int](specification).map(x => p.takeCommandHistory(x)).getOrElse(p.takeCommandHistory)
       p.toResult(r)
     }
   }

@@ -12,7 +12,8 @@ import org.goldenport.sexpr.eval._
 /*
  * @since   Mar. 30, 2019
  *  version Apr. 14, 2019
- * @version Jul. 14, 2019
+ *  version Jul. 14, 2019
+ * @version Aug.  2, 2019
  * @author  ASAMI, Tomoharu
  */
 object StoreFunction {
@@ -44,7 +45,7 @@ object StoreFunction {
     def apply(p: LispContext): LispContext = {
       val a = for {
         collection <- p.param.storeCollection
-        query <- p.param.query
+        query <- p.param.queryDefault
       } yield {
         (collection |@| query)(p.feature.store.query(_, _)).valueOr(SError(_))
       }

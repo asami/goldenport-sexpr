@@ -17,7 +17,8 @@ import org.goldenport.value._
  *  version Mar. 24, 2019
  *  version Apr.  6, 2019
  *  version May. 21, 2019
- * @version Jul. 25, 2019
+ *  version Jul. 25, 2019
+ * @version Aug.  3, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -26,6 +27,8 @@ case class Parameters(
   switches: Set[Symbol]
 ) {
   def show = "Paramerters()" // TODO
+
+  def isEmptyArguments: Boolean = arguments.isEmpty
 
   def head: SExpr = argumentOneBased(1)
 
@@ -191,6 +194,15 @@ object Parameters {
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
+
+    def queryDefault: (Cursor, ValidationNel[SError, Query]) =
+      if (parameters.isEmptyArguments) {
+        val r = Success(Query.all).toValidationNel
+        val nextspec = spec // TODO
+        to_result(nextspec, r)
+      } else {
+        query
+      }
 
     def record: (Cursor, ValidationNel[SError, Record]) = {
       val rec = parameters.argument1[Record](spec)

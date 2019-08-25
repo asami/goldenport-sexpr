@@ -14,9 +14,8 @@ import org.goldenport.Strings
 import org.goldenport.i18n.{I18NString, I18NTemplate}
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.matrix.IMatrix
-import org.goldenport.table.ITable
 import org.goldenport.record.v2.Schema
-import org.goldenport.record.v3.{IRecord, Record}
+import org.goldenport.record.v3.{IRecord, Record, ITable}
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.record.store.Query
 import org.goldenport.value._
@@ -25,6 +24,7 @@ import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource}
 import org.goldenport.bag.{ChunkBag, StringBag}
 import org.goldenport.xml.dom.{DomParser, DomUtils}
 import org.goldenport.parser.{LogicalToken, ParseResult}
+import org.goldenport.parser.CommandParser
 import org.goldenport.xsv.Lxsv
 import org.goldenport.util.StringUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
@@ -50,7 +50,8 @@ import org.goldenport.sexpr.eval.chart.Chart
  *  version Apr. 20, 2019
  *  version May. 21, 2019
  *  version Jun. 30, 2019
- * @version Jul. 29, 2019
+ *  version Jul. 29, 2019
+ * @version Aug. 25, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -73,7 +74,7 @@ sealed trait SExpr {
 
   /* Natural representation for data. Show as-is even large data. */
   /* SString("apple") => apple */
-  final def print: String = try {
+  lazy val print: String = try {
     SExpr.toPrint(print_String)
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#print[$e]"
@@ -94,7 +95,8 @@ sealed trait SExpr {
 
   /* 1 line representation for interaction representation (e.g. REPL). */
   /* SString("apple") => "apple" */
-  def display: String = try {
+  def display: String = _display
+  private lazy val _display = try {
     SExpr.toDisplay(display_String)
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#display[$e]"
@@ -125,7 +127,7 @@ sealed trait SExpr {
 
   /* Show a shortened natural representation with some information for debug. */
   /* SString("apple") => SString[5]: apple */
-  final def show: String = try {
+  lazy val show: String = try {
     show_Content.fold(s"$longTitle")(s => s"${longTitle}\n${SExpr.toShow(s)}")
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#show[$e]"
@@ -205,6 +207,8 @@ case class SNumber(number: BigDecimal) extends SExpr {
   override lazy val asFloat: Float = number.toFloat
   override lazy val asDouble: Double = number.toDouble
   override def asBigDecimal = number
+
+  def +(rhs: SNumber): SNumber = SNumber(number + rhs.number)
 }
 object SNumber {
   val ZERO = SNumber(BigDecimal(0))
@@ -488,6 +492,11 @@ class PromiseProcess() extends IProcess {
 trait IWindow {
   def close(): Unit
 }
+
+class JavaFXWindow(window: org.goldenport.javafx.JavaFXWindow) extends IWindow {
+  def close() = window.close()
+}
+
 // trait IMatrix
 // trait IPath
 // trait IScript
@@ -574,7 +583,7 @@ object SRecord {
 }
 
 case class STable(table: ITable) extends SExpr {
-  override def getString = Some(print)
+  override def getString = Some(display)
   override val titleInfo = s"${table.width}x${table.height}"
   override protected def print_String = table.print
   override protected def display_String = table.display
@@ -582,22 +591,38 @@ case class STable(table: ITable) extends SExpr {
 }
 
 case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
-  override def getString = Some(matrix.toString)
-  // def print = show
-  // def show = matrix.toString
+  override def getString = Some(display)
+  override val titleInfo = s"${matrix.width}x${matrix.height}"
+  override protected def print_String = matrix.print
+  override protected def display_String = matrix.display
+  override protected def show_Content: Option[String] = Some(matrix.show)
+
+  def transpose: SMatrix = SMatrix(matrix.transpose)
+  def +(rhs: SMatrix): SMatrix = SMatrix(matrix + rhs.matrix)
 }
 object SMatrix {
   import org.goldenport.matrix._
 
-  def create2d(prefix: Option[String], p: String): SMatrix = _matrix_2d(p)
+  val CMD_TRANSPORSE = "transpose"
+  val CMD_HORIZONTAL = "horizontal"
+  val CMD_VERTICAL = "vertical"
+
+  private val _parser_1d = CommandParser.create(CMD_TRANSPORSE, CMD_HORIZONTAL, CMD_VERTICAL)
+  private val _parser_2d = CommandParser.create(CMD_TRANSPORSE)
+
+  def create2d(prefix: Option[String], p: String): SMatrix =
+    prefix.map(_matrix_2d(_, p)).getOrElse(_matrix_2d(p))
 
   def create1d(prefix: Option[String], p: String): SMatrix = _matrix_1d(prefix, p)
 
   private def _matrix_1d(prefix: Option[String], p: String): SMatrix =
-    prefix.map {
-      case "v" => _matrix_1d_vertical(p)
-      case "vertical" => _matrix_1d_vertical(p)
-      case _ => _matrix_1d_horizontal(p)
+    prefix.map(_matrix_1d(_, p)).getOrElse(_matrix_1d_horizontal(p))
+
+  private def _matrix_1d(prefix: String, p: String): SMatrix =
+    _parser_1d.get(prefix).collect {
+      case CMD_TRANSPORSE => _matrix_1d_vertical(p)
+      case CMD_VERTICAL => _matrix_1d_vertical(p)
+      case CMD_HORIZONTAL => _matrix_1d_horizontal(p)
     }.getOrElse(_matrix_1d_horizontal(p))
 
   private def _matrix_1d_vertical(p: String) = {
@@ -612,10 +637,15 @@ object SMatrix {
     SMatrix(b)
   }
 
-  private def _matrix_2d(p: String) = {
+  private def _matrix_2d(prefix: String, p: String): SMatrix =
+    _parser_2d.get(prefix).collect {
+      case CMD_TRANSPORSE => _matrix_2d(p).transpose
+    }.getOrElse(RAISE.invalidArgumentFault(s"Unknown prefix: $prefix"))
+
+  private def _matrix_2d(p: String): SMatrix = {
     val a = p.dropWhile(_ == '[')
     val b = a.takeWhile(_ != ']')
-    val c = Strings.tolines(b)
+    val c = Strings.tolines(b).filter(Strings.notblankp)
     val d = c.map(x => Strings.totokens(x).map(_.toDouble))
     val e = VectorRowColumnMatrix.create(d)
     SMatrix(e)
@@ -914,24 +944,39 @@ object S2DSpace {
     label: Option[I18NString],
     elements: Vector[Particle]
   ) {
-    def getTooltip(no: Int): Option[String] = None // TODO
-    def getLabel(no: Int): Option[String] = Some(name) // TODO
-    def getUrl(no: Int): Option[String] = None // TODO
+    def getLabel(no: Int): Option[String] = elements.lift(no).flatMap(_.label)
+    def getTooltip(no: Int): Option[String] = elements.lift(no).flatMap(_.tooltip)
+    def getUrl(no: Int): Option[URL] = elements.lift(no).flatMap(_.url)
   }
   object Series {
     def apply(name: String, elements: Seq[Particle]): Series = Series(name, None, elements.toVector)
+    def apply(name: String, label: Option[I18NString], elements: Seq[Particle]): Series = new Series(name, label, elements.toVector)
   }
 
   trait Particle {
     def x: Double
     def y: Double
     def label: Option[String]
+    def tooltip: Option[String]
+    def url: Option[URL]
   }
 
-  case class Point(x: Double, y: Double, label: Option[String]) extends Particle
+  case class Point(
+    x: Double,
+    y: Double,
+    label: Option[String],
+    tooltip: Option[String],
+    url: Option[URL]
+  ) extends Particle
+  object Point {
+    def apply(x: Double, y: Double, label: String): Point =
+      Point(x, y, Some(label), None, None)
+  }
 
-  def apply(ps: Seq[S2DSpace.Particle], c: Chart): S2DSpace =
-    S2DSpace(Vector(Series("XY", ps)), Some(c))
+  def apply(name: String, ps: Seq[S2DSpace.Particle], c: Chart): S2DSpace = {
+    val s = Series(name, ps)
+    S2DSpace(Vector(s), Some(c))
+  }
 }
 
 case class S3DSpace(
@@ -946,9 +991,9 @@ object S3DSpace {
     label: Option[I18NString],
     elements: Vector[Particle]
   ) {
-    def getTooltip(no: Int): Option[String] = None // TODO
-    def getLabel(no: Int): Option[String] = Some(name) // TODO
-    def getUrl(no: Int): Option[String] = None // TODO
+    def getLabel(no: Int): Option[String] = elements.lift(no).flatMap(_.label)
+    def getTooltip(no: Int): Option[String] = elements.lift(no).flatMap(_.tooltip)
+    def getUrl(no: Int): Option[URL] = elements.lift(no).flatMap(_.url)
   }
   object Series {
     def apply(name: String, elements: Seq[Particle]): Series = Series(name, None, elements.toVector)
@@ -959,9 +1004,18 @@ object S3DSpace {
     def y: Double
     def z: Double
     def label: Option[String]
+    def tooltip: Option[String]
+    def url: Option[URL]
   }
 
-  case class Point(x: Double, y: Double, z: Double, label: Option[String]) extends Particle
+  case class Point(
+    x: Double,
+    y: Double,
+    z: Double,
+    label: Option[String],
+    tooltip: Option[String],
+    url: Option[URL]
+  ) extends Particle
 
   def apply(ps: Seq[S3DSpace.Particle], c: Chart): S3DSpace =
     S3DSpace(Vector(Series("XYZ", ps)), Some(c))

@@ -14,7 +14,8 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Apr. 20, 2019
- * @version Apr. 20, 2019
+ *  version Apr. 20, 2019
+ * @version Aug.  2, 2019
  * @author  ASAMI, Tomoharu
  */
 case class QueryFactory(config: RichConfig) {
@@ -82,7 +83,7 @@ object QueryFactory {
       }
     }
 
-    def query_expr: Parser[Query.Expression] = and | or | not | equal
+    def query_expr: Parser[Query.Expression] = and | or | not | equal | not_equal
 
     def and: Parser[Query.AndExpression] = {
       open ~ atom("and") ~> query_expr.* <~ close ^^ {
@@ -107,6 +108,15 @@ object QueryFactory {
         case atom ~ expr => Query.QueryExpressionExpression(
           atom,
           EqualQuery(expr.asObject)
+        )
+      }
+    }
+
+    def not_equal: Parser[Query.Expression] = {
+      open ~ atom("!=") ~> atom_name ~ expr <~ close ^^ {
+        case atom ~ expr => Query.QueryExpressionExpression(
+          atom,
+          NotEqualQuery(expr.asObject)
         )
       }
     }

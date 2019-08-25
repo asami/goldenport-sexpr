@@ -3,10 +3,9 @@ package org.goldenport.sexpr
 import java.net.{URL, URI}
 import org.goldenport.RAISE
 import org.goldenport.record.v2.Schema
-import org.goldenport.record.v3.Record
+import org.goldenport.record.v3.{Record, ITable}
 import org.goldenport.record.store.Query
 import org.goldenport.matrix.IMatrix
-import org.goldenport.table.ITable
 
 /*
  * @since   Sep. 25, 2018
@@ -14,7 +13,8 @@ import org.goldenport.table.ITable
  *  version Feb. 12, 2019
  *  version Mar.  2, 2019
  *  version Apr. 20, 2019
- * @version May.  8, 2019
+ *  version May.  8, 2019
+ * @version Aug.  3, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExprConverter[T] extends Function1[SExpr, T]

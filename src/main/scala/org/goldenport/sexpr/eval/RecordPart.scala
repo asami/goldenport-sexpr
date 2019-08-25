@@ -8,7 +8,7 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Jul. 28, 2019
- * @version Jul. 29, 2019
+ * @version Jul. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 trait RecordPart { self: LispFunction =>
@@ -20,15 +20,9 @@ trait RecordPart { self: LispFunction =>
     case m => RAISE.invalidArgumentFault(s"no record: $m")
   }
 
-  protected final def record_make(p: org.w3c.dom.Node): SRecord = Record.create(p) match {
-    case Left(rs) => RAISE.notImplementedYetDefect
-    case Right(r) => SRecord(r)
-  }
+  protected final def record_make(p: org.w3c.dom.Node): SRecord = SRecord(Record.create(p))
 
-  protected final def record_make(p: JsValue): SRecord = Record.create(p) match {
-    case Left(rs) => RAISE.notImplementedYetDefect
-    case Right(r) => SRecord(r)
-  }
+  protected final def record_make(p: JsValue): SRecord = SRecord(Record.create(p))
 }
 
 object RecordPart {

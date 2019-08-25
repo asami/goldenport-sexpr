@@ -16,8 +16,8 @@ import org.goldenport.sexpr._
  *  version Feb. 24, 2019
  *  version Mar.  9, 2019
  *  version May. 21, 2019
-Literal *  version Jun. 30, 2019
-Literal * @version Jul. 25, 2019
+ *  version Jun. 30, 2019
+ * @version Jul. 25, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
