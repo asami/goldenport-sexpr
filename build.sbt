@@ -2,7 +2,7 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "2.0.3"
+version := "2.0.4"
 
 scalaVersion := "2.10.3"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")
@@ -13,11 +13,13 @@ scalacOptions += "-deprecation"
 
 scalacOptions += "-unchecked"
 
+resolvers += "GitHab releases" at "https://raw.github.com/asami/maven-repository/2019/releases"
+
 resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.2.41"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.2.44"
 
-libraryDependencies += "org.goldenport" %% "goldenport-record" % "1.3.5" % "provided"
+libraryDependencies += "org.goldenport" %% "goldenport-record" % "1.3.10" % "provided"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3" % "compile"
 
@@ -46,4 +48,10 @@ libraryDependencies += "junit" % "junit" % "4.10" % "test"
 libraryDependencies += "org.scalatest" %% "scalatest" % "2.0" % "test"
 
 //
-publishTo := Some(Resolver.file("asamioffice", file("target/maven-repository")))
+val mavenrepo = settingKey[String]("mavenrepo")
+
+mavenrepo := sys.env.getOrElse("PUBLISH_MAVEN_REPO", default = "target/maven-repository")
+
+publishTo <<= mavenrepo { v: String =>
+  Some(Resolver.file("file", file(v)))
+}
