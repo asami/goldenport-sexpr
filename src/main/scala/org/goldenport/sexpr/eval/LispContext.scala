@@ -6,7 +6,6 @@ import scala.util.control.NonFatal
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration._
-import javax.script.ScriptEngineManager
 import org.goldenport.RAISE
 import org.goldenport.log.LogContext
 import org.goldenport.i18n.I18NContext
@@ -32,7 +31,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version May. 20, 2019
  *  version Jun.  9, 2019
  *  version Jul. 14, 2019
- * @version Aug. 17, 2019
+ *  version Aug. 17, 2019
+ * @version Sep. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
@@ -41,7 +41,7 @@ trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
   def evaluator: LispContext => LispContext
   def serviceLogic: UnitOfWorkLogic
   def storeLogic: StoreOperationLogic
-  def scriptContext: ScriptEngineManager
+  def scriptContext: ScriptEngineContext
   def sqlContext: SqlContext
   def resourceManager: ResourceManager
   def feature: FeatureContext
@@ -96,7 +96,7 @@ trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
     }
   }
 
-  def reductForApply: LispContext = ???
+  def reductForApply: LispContext = RAISE.noReachDefect
 
   def eval(expr: SExpr): SExpr = {
     val r = evaluator(pure(expr))
@@ -182,9 +182,23 @@ trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
 
   def createDynamicServiceFunction(name: String): DynamicServiceFunction =
     DynamicServiceFunction.create(name)
+
+  def format(p: SExpr): SString = SString(formatString(p))
+
+  def format(rule: String, p: SExpr): SString = SString(formatString(rule, p))
+
+  def formatString(p: SExpr): String = p match {
+    case SString(s) => s
+    case m => i18nContext.format(m.asObject)
+  }
+
+  def formatString(rule: String, p: SExpr): String = i18nContext.format(rule, p.asObject)
+
+  def formatMessage(rule: String, ps: Seq[SExpr]): String = i18nContext.formatMessage(rule, ps.map(_.asObject))
+
+  def formatMessageKey(key: String, ps: Seq[SExpr]): String = i18nContext.formatMessageKey(key, ps.map(_.asObject))
 }
 object LispContext {
-  val scriptContext = new ScriptEngineManager()
   val defaultServiceLogic = UnitOfWorkLogic.printer
   val defaultStoreLogic = StoreOperationLogic.printer
   // def defaultFeature = FeatureContext.default
@@ -195,6 +209,7 @@ object LispContext {
     evaluator: LispContext => LispContext,
     x: SExpr
   ): LispContext = {
+    val scriptContext = ScriptEngineContext.default
     val sqlcontext = {
       if (true)
         SqlContext.createSync(config.properties)
@@ -228,7 +243,7 @@ object LispContext {
     evaluator: LispContext => LispContext,
     serviceLogic: UnitOfWorkLogic,
     storeLogic: StoreOperationLogic,
-    scriptContext: ScriptEngineManager,
+    scriptContext: ScriptEngineContext,
     sqlContext: SqlContext,
     resourceManager: ResourceManager,
     feature: FeatureContext,

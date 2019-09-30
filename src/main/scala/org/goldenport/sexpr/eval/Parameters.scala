@@ -7,6 +7,7 @@ import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{IRecord, Record, RecordSequence}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
+import org.goldenport.collection.NonEmptyVector
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.SExprConverter._
 import org.goldenport.value._
@@ -18,7 +19,8 @@ import org.goldenport.value._
  *  version Apr.  6, 2019
  *  version May. 21, 2019
  *  version Jul. 25, 2019
- * @version Aug.  3, 2019
+ *  version Aug.  3, 2019
+ * @version Sep. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -51,6 +53,12 @@ case class Parameters(
   def argumentList[A](
     spec: FunctionSpecification
   )(implicit a: SExprConverter[A]): List[A] = arguments.map(a.apply)
+
+  def argumentNonEmptyVector[A](
+    spec: FunctionSpecification
+  )(implicit a: SExprConverter[A]): NonEmptyVector[A] =
+    NonEmptyVector.createOption(arguments.map(a.apply)).getOrElse(
+      RAISE.invalidArgumentFault("Empty list"))
 
   def argument1[A](
     spec: FunctionSpecification
@@ -136,9 +144,22 @@ object Parameters {
     protected def to_error[T](newspec: FunctionSpecification, e: SError): (Cursor, ValidationNel[SError, T]) =
       (copy(spec = newspec), Failure(NonEmptyList(e)))
 
+    def arguments: (Cursor, ValidationNel[SError, List[SExpr]]) = argumentList[SExpr]
+
     def argumentList[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, List[A]]) =
       try {
         val r = parameters.argumentList(spec)(converter)
+        val nextspec = spec // TODO
+        val nextparams = parameters.copy(arguments = Nil)
+        val nextcursor = Cursor(feature, nextspec, nextparams)
+        (nextcursor, Success(r))
+      } catch {
+        case NonFatal(e) => (this, Failure(SError(e)).toValidationNel)
+      }
+
+    def argumentNonEmptyVector[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, NonEmptyVector[A]]) =
+      try {
+        val r = parameters.argumentNonEmptyVector(spec)(converter)
         val nextspec = spec // TODO
         val nextparams = parameters.copy(arguments = Nil)
         val nextcursor = Cursor(feature, nextspec, nextparams)

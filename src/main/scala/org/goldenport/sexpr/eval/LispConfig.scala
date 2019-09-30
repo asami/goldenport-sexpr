@@ -7,11 +7,14 @@ import org.goldenport.hocon.RichConfig
 /*
  * @since   Sep. 16, 2018
  *  version Oct.  6, 2018
- * @version Mar. 24, 2019
+ *  version Mar. 24, 2019
+ * @version Sep.  2, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispConfig extends EvalConfig {
-  def defaultScriptLanguage = "javascript"
+  def defaultScriptLanguage = "javascript" // TODO customizable
+//  def defaultExpressionLanguage = "jexl" // DODO customizable
+  def defaultExpressionLanguage = defaultScriptLanguage
 }
 
 object LispConfig {

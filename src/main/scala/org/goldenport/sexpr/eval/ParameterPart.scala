@@ -7,6 +7,7 @@ import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{Record, RecordSequence}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
+import org.goldenport.collection.NonEmptyVector
 import org.goldenport.sexpr._
 import org.goldenport.value._
 import Parameters.Cursor
@@ -16,14 +17,19 @@ import Parameters.Cursor
  *  version Apr. 20, 2019
  *  version May. 14, 2019
  *  version Jul. 14, 2019
- * @version Aug.  3, 2019
+ *  version Aug.  3, 2019
+ * @version Sep. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
   object param {
     def cursor(spec: FunctionSpecification) = Cursor(feature, spec, parameters)
 
+    def arguments = State[Cursor, ValidationNel[SError, List[SExpr]]](_.arguments)
+
     def argumentList[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, List[A]]](_.argumentList)
+
+    def argumentNonEmptyVector[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, NonEmptyVector[A]]](_.argumentNonEmptyVector)
 
     def argument1[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, A]](_.argument1)
 

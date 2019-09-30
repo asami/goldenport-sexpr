@@ -6,8 +6,9 @@ import org.goldenport.io.{ResourceHandle, MimeType}
 import org.goldenport.record.v2.{Schema, Column}
 import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.record.v3.{ITable, Table, Record}
+import org.goldenport.values.NumberRange
 import org.goldenport.sexpr._
-import org.goldenport.sexpr.eval.chart.Chart
+// import org.goldenport.sexpr.eval.chart.Chart
 import org.goldenport.util.StringUtils
 
 /*
@@ -16,7 +17,8 @@ import org.goldenport.util.StringUtils
  *  version Mar. 10, 2019
  *  version May. 26, 2019
  *  version Jul. 29, 2019
- * @version Aug. 18, 2019
+ *  version Aug. 18, 2019
+ * @version Sep. 19, 2019
  * @author  ASAMI, Tomoharu
  */
 trait TablePart { self: LispFunction =>
@@ -38,7 +40,7 @@ trait TablePart { self: LispFunction =>
   protected final def table_load_sexpr(u: LispContext, p: ResourceHandle): STable = {
     // val sexpr = resolve_uri(u, p)
     // table_make(u, sexpr)
-    ???
+    RAISE.notImplementedYetDefect
   }
 
   protected final def table_load_csv(u: LispContext, p: ResourceHandle): STable = {
@@ -97,85 +99,114 @@ trait TablePart { self: LispFunction =>
 
   protected final def table_make(p: SJson): STable = STable(Table.create(p.json))
 
+  protected final def table_matrix(t: ITable, p: SRange): SMatrix =
+    table_matrix(t, p.range)
+
+  protected final def table_matrix(t: ITable, p: NumberRange): SMatrix =
+    SMatrix(t.matrix.projection(p).toDoubleMatrix)
+
+  protected final def table_matrix(t: ITable): SMatrix =
+    SMatrix(t.matrix.makeDoubleMatrix)
+
   protected final def table_chart(u: LispContext, p: ITable): SExpr = {
-    // val f = Figure()
-    // val p = f.subplot(0)
-    // val x = linspace(0.0,1.0)
-    // p += plot(x, x :^ 2.0)
-    // p += plot(x, x :^ 3.0, '.')
-    // p.xlabel = "x axis"
-    // p.ylabel = "y axis"
-    // f.refresh()
-    // SWindow(MatrixPart.BreezeFigureWindow(f))
-    val records = p.toRecordVector
-    val schema = p.schema
-    val logic = DrawChartLogic(
-      u,
-      p,
-      schema.columns(1), // XXX
-      schema.columns(2), // XXX
-      Some(schema.columns(0)) // XXX
-    )
-    logic.draw(records)
+    val chart = u.feature.chart.buildChart(u, p)
+    u.feature.chart.draw(chart)
   }
 
-  private case class DrawChartLogic(
-    u: LispContext,
-    table: ITable,
-    xColumn: Column,
-    yColumn: Column,
-    titleColumn: Option[Column]
-  ) {
-    def locale = u.locale
-    val xLabel = xColumn.label(locale)
-    val yLabel = yColumn.label(locale)
-    val zlabel = None
-    val title: String = titleColumn.map(_.label(locale)).getOrElse("No title")
+  // protected final def table_chart(u: LispContext, p: ITable): SExpr = {
+  //   // val f = Figure()
+  //   // val p = f.subplot(0)
+  //   // val x = linspace(0.0,1.0)
+  //   // p += plot(x, x :^ 2.0)
+  //   // p += plot(x, x :^ 3.0, '.')
+  //   // p.xlabel = "x axis"
+  //   // p.ylabel = "y axis"
+  //   // f.refresh()
+  //   // SWindow(MatrixPart.BreezeFigureWindow(f))
+  //   val records = p.toRecordVector
+  //   val schema = p.schema
+  //   val logic = DrawChartLogic(
+  //     u,
+  //     p,
+  //     schema.columns(1), // XXX
+  //     schema.columns(2), // XXX
+  //     Some(schema.columns(0)) // XXX
+  //   )
+  //   logic.draw(records)
+  // }
 
-    def draw(ps: Seq[Record]): SExpr = {
-      val uselegend = false
-      val usetooltip = false
-      val uselabel = false
-      val useurl = false
-      val chart = Chart(
-        Some(title),
-        Some(xLabel),
-        Some(yLabel),
-        zlabel,
-        uselabel,
-        usetooltip,
-        uselabel,
-        useurl
-      )
-      val plots = _make_plots(ps)
-      val space = S2DSpace(plots, Some(chart))
-      u.feature.chart.draw(space)
-    }
+  // private case class DrawChartLogic(
+  //   u: LispContext,
+  //   table: ITable,
+  //   xColumn: Column,
+  //   yColumn: Column,
+  //   titleColumn: Option[Column]
+  // ) {
+  //   def locale = u.locale
+  //   val xLabel = xColumn.label(locale)
+  //   val yLabel = yColumn.label(locale)
+  //   val zlabel = None
+  //   val title: String = titleColumn.map(_.label(locale)).getOrElse("No title")
 
-    private def _make_plots(ps: Seq[Record]): Vector[S2DSpace.Series] =
-      Vector(_make_series(ps))
+  //   def draw(ps: Seq[Record]): SExpr = {
+  //     val uselegend = false
+  //     val usetooltip = false
+  //     val uselabel = false
+  //     val useurl = false
+  //     val chart = Chart(
+  //       Some(title),
+  //       Some(xLabel),
+  //       Some(yLabel),
+  //       zlabel,
+  //       uselabel,
+  //       usetooltip,
+  //       uselabel,
+  //       useurl
+  //     )
+  //     val plots = _make_plots(ps)
+  //     val space = S2DSpace(plots, Some(chart))
+  //     u.feature.chart.draw(space)
+  //   }
 
-    private def _make_series(ps: Seq[Record]): S2DSpace.Series = {
-      val name = title
-      val label = None
-      val elements = _make_particles(ps)
-      S2DSpace.Series(name, label, elements)
-    }
+  //   private def _make_plots(ps: Seq[Record]): Vector[S2DSpace.Series] = {
+  //     Vector(_make_particle_series(ps), _make_line_series(ps))
+  //   }
 
-    private def _make_particles(ps: Seq[Record]): Seq[S2DSpace.Particle] = {
-      val labelkey = titleColumn.get.name // TODO
-      val xkey = xColumn.name
-      val ykey = yColumn.name
-      ps.flatMap(_make_particle(labelkey, xkey, ykey))
-    }
+  //   private def _make_particle_series(ps: Seq[Record]): S2DSpace.Series = {
+  //     val name = title
+  //     val label = None
+  //     val elements = _make_particles(ps)
+  //     S2DSpace.Series.shape(name, label, elements)
+  //   }
 
-    private def _make_particle(labelkey: String, xkey: String, ykey: String)(p: Record) = {
-      (p.getString(labelkey), p.getDouble(xkey), p.getDouble(ykey)) match {
-        case (Some(label), Some(x), Some(y)) => Some(S2DSpace.Point(x, y, label))
-        case _ => None
-      }
-    }
-  }
+  //   private def _make_particles(ps: Seq[Record]): Seq[S2DSpace.Particle] = {
+  //     val labelkey = titleColumn.get.name // TODO
+  //     val xkey = xColumn.name
+  //     val ykey = yColumn.name
+  //     ps.flatMap(_make_particle(labelkey, xkey, ykey))
+  //   }
+
+  //   private def _make_particle(labelkey: String, xkey: String, ykey: String)(p: Record) = {
+  //     (p.getString(labelkey), p.getDouble(xkey), p.getDouble(ykey)) match {
+  //       case (Some(label), Some(x), Some(y)) => Some(S2DSpace.Point(x, y, label))
+  //       case _ => None
+  //     }
+  //   }
+
+  //   private def _make_line_series(ps: Seq[Record]): S2DSpace.Series = {
+  //     val xs = Vector(_make_point(ps.head), _make_point(ps.last))
+  //     S2DSpace.Series.line(xs)
+  //   }
+
+  //   private def _make_point(p: Record): S2DSpace.Point = {
+  //     val xkey = xColumn.name
+  //     val ykey = yColumn.name
+  //     (p.getDouble(xkey), p.getDouble(ykey)) match {
+  //       case (Some(x), Some(y)) => S2DSpace.Point(x, y)
+  //       case _ => RAISE.noReachDefect
+  //     }
+  //   }
+  // }
 }
 
 object TablePart {

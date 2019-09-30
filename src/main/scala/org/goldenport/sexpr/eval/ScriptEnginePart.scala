@@ -3,22 +3,33 @@ package org.goldenport.sexpr.eval
 import javax.script._
 import java.security._
 import java.security.cert.Certificate
+import org.goldenport.RAISE
+import org.goldenport.Strings
+import org.goldenport.record.v2.util.BeanUtils
+import org.goldenport.util.StringUtils
 import org.goldenport.sexpr._
 
 /*
  * @since   Sep. 18, 2018
- * @version Sep. 20, 2018
+ *  version Aug. 31, 2019
+ * @version Sep. 29, 2019
  * @author  ASAMI, Tomoharu
  */
 trait ScriptEnginePart { self: LispContext =>
   // https://qiita.com/takaki@github/items/156818da334d53a47d92
   object script {
     def eval(p: SScript): LispContext = {
-    val a = scriptContext.getEngineFactories()
-//    println(s"S: $a")
-    val lang = p.language getOrElse config.defaultScriptLanguage
+      // val a = scriptContext.getEngineFactories()
+      // println(s"S: $a")
+      val lang = p.language getOrElse config.defaultScriptLanguage
       _eval(lang, p.text)
     }
+
+    def eval(p: SExpression): LispContext =
+      _eval_simple_expression_option(p) getOrElse {
+        val lang = config.defaultExpressionLanguage
+        _eval_format(lang, p.expression)
+      }
   }
 
   private def _eval(name: String, script: String): LispContext =
@@ -27,10 +38,12 @@ trait ScriptEnginePart { self: LispContext =>
   private def _eval(engine: ScriptEngine, script: String): LispContext = {
     try {
       AccessController.doPrivileged(new PrivilegedAction[LispContext]() {
-        def run() = {
+        def run() = try {
           val r = engine.eval(script)
           val s = SExpr.create(r)
           toResult(s)
+        } catch {
+          case e: ScriptException => toResult(SError(e))
         }
       })
     } catch {
@@ -40,7 +53,7 @@ trait ScriptEnginePart { self: LispContext =>
   }
 
   private def _get_engine(name: String): Option[ScriptEngine] =
-    Option(scriptContext.getEngineByName(name))
+    scriptContext.createEngineOption(name, bindings)
 
   private def _access_control_context = {
     val permissions = new Permissions()
@@ -50,14 +63,94 @@ trait ScriptEnginePart { self: LispContext =>
     )
     new AccessControlContext(Array[ProtectionDomain](domain))
   }
+
+  private def _eval_simple_expression_option(p: SExpression): Option[LispContext] =
+    Strings.totokens(p.expression, ".") match {
+      case Nil => None
+      case x :: Nil => None
+      case xs => _eval_simple_expression_option(xs)
+    }
+
+  private def _eval_simple_expression_option(ps: List[String]): Option[LispContext] =
+    if (_is_simple_expression(ps))
+      _eval_simple_expression(ps)
+    else
+      None
+
+  private def _is_simple_expression(ps: List[String]) = {
+    val xs = ps match {
+      case Nil => Nil
+      case xs => xs.init :+ xs.last.span(_ != '%')._1
+    }
+    xs.forall(StringUtils.isScriptIdentifier)
+  }
+
+  private def _eval_simple_expression(ps: List[String]): Option[LispContext] = ps match {
+    case Nil => RAISE.noReachDefect
+    case x :: Nil =>
+      val (expr, format) = _parse_format(x)
+      bindings.get(x).map(x => toResult(_format(format, SExpr.create(x))))
+    // case xs =>
+    //   val key = xs.init.mkString(".") // TODO
+    //   val (propertyname, format) = _parse_format(xs.last)
+    //   bindings.get(key).flatMap(bean =>
+    //     bean match {
+    //       case m: AnyRef => BeanUtils.getProperty(m, propertyname).
+    //           map(x => toResult(_format(format, SExpr.create(x))))
+    //       case _ => None
+    //     }
+    //   )
+    case xs =>
+      val (key, format) = _parse_format(xs.mkString("."))
+      bindings.get(key).
+        map { x =>
+          toResult(_format(format, SExpr.create(x)))
+        }.orElse (_eval_simple_expression(xs.init, List(xs.last)))
+  }
+
+  private def _eval_simple_expression(property: List[String], path: List[String]): Option[LispContext] =
+    property match {
+      case Nil => None
+      case xs => 
+        val key = xs.mkString(".")
+        bindings.get(key).flatMap {
+          case m: AnyRef => _eval_bean(m, path)
+          case _ => None
+        }.orElse(_eval_simple_expression(property.init, property.last :: path))
+    }
+
+  private def _eval_bean(o: Any, path: List[String]): Option[LispContext] =
+    o match {
+      case m: AnyRef => path match {
+        case Nil => RAISE.noReachDefect
+        case x :: Nil =>
+          val (propertyname, format) = _parse_format(x)
+          BeanUtils.getProperty(x, propertyname).
+            map(v => toResult(_format(format, SExpr.create(v))))
+        case x :: xs => BeanUtils.getProperty(m, x).
+            flatMap(v => _eval_bean(v, xs))
+      }
+      case _ => None
+    }
+
+  private def _eval_format(name: String, script: String): LispContext = {
+    val (s, format) = _parse_format(script)
+    val ctx = _eval(name, s)
+    ctx.toResult(_format(format, ctx.value))
+  }
+
+  private def _parse_format(p: String): (String, Option[String]) = {
+    val (s, post) = p.span(_ != '%')
+    post.length match {
+      case 0 => (p, None)
+      case 1 => (p, None)
+      case _ => (s, Some(post.substring(1)))
+    }
+  }
+
+  private def _format(fmt: Option[String], p: SExpr): SExpr =
+    fmt.map(format(_, p)).getOrElse(p)
 }
 
-// object ScriptEnginePart {
-//   val manager = new ScriptEngineManager()
-//   val engine = manager.getEngineByName("javascript")
-//   if (engine == null)
-//     ???
-
-//   def f() = {
-//   }
-// }
+object ScriptEnginePart {
+}

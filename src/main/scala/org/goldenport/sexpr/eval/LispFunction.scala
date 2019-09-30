@@ -15,12 +15,13 @@ import org.goldenport.record.unitofwork.UnitOfWork._
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.io.{MimeType, UrlUtils, Retry => LibRetry}
 import org.goldenport.sexpr._, SExprConverter._
-import org.goldenport.matrix.IMatrix
+import org.goldenport.matrix.{IMatrix, Matrix}
 import org.goldenport.bag.{EmptyBag, ChunkBag, StringBag}
 import org.goldenport.xml.dom.DomUtils
 import org.goldenport.log.Loggable
 import org.goldenport.cli.ShellCommand
 import org.goldenport.incident.{Incident => LibIncident}
+import org.goldenport.parser.InterpolationParser
 
 /*
  * @since   Sep. 10, 2018
@@ -33,7 +34,8 @@ import org.goldenport.incident.{Incident => LibIncident}
  *  version May. 26, 2019
  *  version Jun. 30, 2019
  *  version Jul. 28, 2019
- * @version Aug. 25, 2019
+ *  version Aug. 25, 2019
+ * @version Sep. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -63,6 +65,31 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
 
   def apply(p: LispContext): LispContext
 
+  protected final def to_string(u: LispContext, p: SExpr): String = u.formatString(p)
+
+  protected final def string_interpolate(u: LispContext, ps: Seq[SExpr]): SExpr =
+    SString(ps.map(string_interpolate_string(u, _)).mkString)
+
+  protected final def string_interpolate_string(u: LispContext, p: SExpr): String = p match {
+    case SString(s) => InterpolationParser.parse(s).map {
+      case Right(r) => to_string(u, u.eval(SScript.create(r)))
+      case Left(l) => l
+    }.mkString
+    case m => to_string(u, m)
+  }
+
+  protected final def string_concatenate(u: LispContext, ps: Seq[SExpr]): SExpr =
+    SString(ps.map(to_string(u, _)).mkString)
+
+  protected final def string_format(u: LispContext, template: String, ps: Seq[SExpr]): SExpr =
+    SString(ps.map(x => u.formatString(template, x)).mkString)
+
+  protected final def string_message(u: LispContext, template: String, ps: Seq[SExpr]): SExpr =
+    SString(u.formatMessage(template, ps))
+
+  protected final def string_message_key(u: LispContext, key: String, ps: Seq[SExpr]): SExpr =
+    SString(u.formatMessageKey(key, ps))
+
   protected final def normalize_auto(u: LispContext, p: SExpr): SExpr = p match {
     case m: SUrl => resolve_url(u, m)
     case m: SUrn => resolve_urn(u, m)
@@ -85,7 +112,7 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
   }
 
   protected final def resolve_uri(u: LispContext, uri: URI): SExpr = {
-    ???
+    RAISE.notImplementedYetDefect
   }
 
   protected final def file_fetch(u: LispContext, url: URL): LispContext = {
@@ -130,6 +157,9 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
           SBlob(p)
     }.getOrElse(SBlob(p))
   }
+}
+
+trait ApplyFunction extends LispFunction {
 }
 
 trait EvalFunction extends LispFunction {
@@ -472,6 +502,7 @@ object LispFunction {
 
   case object Plus extends EvalFunction {
     val specification = FunctionSpecification("+", 2)
+
     def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
     //   SNumber(p.asBigDecimalList.sum)
     // }
@@ -491,8 +522,39 @@ object LispFunction {
 
   case object Minus extends EvalFunction {
     val specification = FunctionSpecification("-", 2)
-    def eval(p: Parameters) = {
-      SNumber(p.asBigDecimalList.sum)
+
+    def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
+
+    @annotation.tailrec
+    private def _go(p: SExpr, ps: List[SExpr]): SExpr = ps match {
+      case Nil => p
+      case x :: xs => _go(_plus(p, x), xs)
+    }
+
+    private def _plus(l: SExpr, r: SExpr): SExpr = (l, r) match {
+      case (ml: SNumber, mr: SNumber) => ml - mr
+      case (ml: SMatrix, mr: SMatrix) => ml - mr
+      case _ => SError(s"Invalid number or matrix: $l, $r")
+    }
+  }
+
+  case object Multify extends EvalFunction {
+    val specification = FunctionSpecification("*", 2)
+
+    def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
+
+    @annotation.tailrec
+    private def _go(p: SExpr, ps: List[SExpr]): SExpr = ps match {
+      case Nil => p
+      case x :: xs => _go(_plus(p, x), xs)
+    }
+
+    private def _plus(l: SExpr, r: SExpr): SExpr = (l, r) match {
+      case (ml: SNumber, mr: SNumber) => ml * mr
+      case (ml: SNumber, mr: SMatrix) => ml * mr
+      case (ml: SMatrix, mr: SNumber) => ml * mr
+      case (ml: SMatrix, mr: SMatrix) => ml * mr
+      case _ => SError(s"Invalid number or matrix: $l, $r")
     }
   }
 
@@ -505,6 +567,72 @@ object LispFunction {
         case m => m.asString.length
       }.sum
       SNumber(r)
+    }
+  }
+
+  case object Inv extends EvalFunction {
+    val specification = FunctionSpecification("inv", 1)
+    def eval(p: Parameters) = {
+      val a = p.argument1[IMatrix[Double]](specification)
+      val r = a.inv
+      SMatrix(r)
+    }
+  }
+
+  case object StringInterpolate extends ApplyFunction {
+    val specification = FunctionSpecification("string-interpolate", 1)
+    def apply(u: LispContext): LispContext = {
+      val a = u.parameters.arguments
+      val r = string_interpolate(u, a)
+      u.toResult(r)
+    }
+  }
+
+  case object StringFormat extends ApplyFunction {
+    val specification = FunctionSpecification("string-format", 1)
+    def apply(u: LispContext): LispContext = {
+      val a = for {
+        template <- u.param.argument1[String]
+        args <- u.param.arguments
+      } yield {
+        (template |@| args) { (t, xs) =>
+          string_format(u, t, xs)
+        }
+      }
+      val r = a.run(u.param.cursor(specification))
+      u.toResult(r)
+    }
+  }
+
+  case object StringMessage extends ApplyFunction {
+    val specification = FunctionSpecification("string-message", 1)
+    def apply(u: LispContext): LispContext = {
+      val a = for {
+        template <- u.param.argument1[String]
+        args <- u.param.arguments
+      } yield {
+        (template |@| args) { (t, xs) =>
+          string_message(u, t, xs)
+        }
+      }
+      val r = a.run(u.param.cursor(specification))
+      u.toResult(r)
+    }
+  }
+
+  case object StringMessageKey extends ApplyFunction {
+    val specification = FunctionSpecification("string-message-key", 1)
+    def apply(u: LispContext): LispContext = {
+      val a = for {
+        key <- u.param.argument1[String]
+        args <- u.param.arguments
+      } yield {
+        (key |@| args) { (k, xs) =>
+          string_message_key(u, k, xs)
+        }
+      }
+      val r = a.run(u.param.cursor(specification))
+      u.toResult(r)
     }
   }
 
@@ -795,6 +923,7 @@ object LispFunction {
     }
 
     private def _xslt(xslt: SXsl, p: IDom): SXml = {
+      // println("XSLT: " + DomUtils.toString(p.dom))
       val r = DomUtils.transform(xslt.xslt, p.dom) // Caution: xslt.dom doen't work.
       SXml(r)
     }
@@ -888,6 +1017,24 @@ object LispFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
+  case object VectorVerticalFill extends EvalFunction {
+    val specification = FunctionSpecification("vector-vertical-fill", 2)
+
+    def eval(p: Parameters) = {
+      val (count, v) = p.argument2[Int, Double](specification)
+      SMatrix(Matrix.vectorVerticalFill(count, v))
+    }
+  }
+
+  case object MatrixHorizontalConcatenate extends EvalFunction {
+    val specification = FunctionSpecification("matrix-horizontal-concatenate", 2)
+
+    def eval(p: Parameters) = {
+      val xs = p.argumentNonEmptyVector[IMatrix[Double]](specification)
+      SMatrix(Matrix.horizontalConcatenate(xs))
+    }
+  }
+
   case object MatrixLoad extends IoFunction {
     val specification = FunctionSpecification("matrix-load", 1)
 
@@ -912,7 +1059,7 @@ object LispFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object RecordMake extends IoFunction {
+  case object RecordMake extends ApplyFunction {
     val specification = FunctionSpecification("record-make", 1)
 
     def apply(u: LispContext): LispContext = {
@@ -920,8 +1067,6 @@ object LispFunction {
       val r = record_make(u, a)
       u.toResult(r)
     }
-
-    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
   case object TableLoad extends IoFunction {
@@ -936,7 +1081,7 @@ object LispFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object TableMake extends IoFunction {
+  case object TableMake extends ApplyFunction {
     val specification = FunctionSpecification("table-make", 1)
 
     def apply(u: LispContext): LispContext = {
@@ -944,8 +1089,21 @@ object LispFunction {
       val r = table_make(u, a)
       u.toResult(r)
     }
+  }
 
-    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  case object TableMatrix extends EvalFunction {
+    val specification = FunctionSpecification("table-matrix", 1)
+
+    def eval(p: Parameters): SExpr = {
+      val t = p.argument1[ITable](specification)
+      val range = p.getArgumentOneBased(2) map {
+        case m: SRange => m
+        case m: SInterval => m.toRange
+        case m: SNumber => m.toRange
+        case m => RAISE.syntaxErrorFault(s"No range: ${m}")
+      }
+      range.map(table_matrix(t, _)).getOrElse(table_matrix(t))
+    }
   }
 
   case object TableChart extends IoFunction {

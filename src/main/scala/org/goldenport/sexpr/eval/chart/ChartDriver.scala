@@ -5,9 +5,9 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Mar. 10, 2019
- * @version Mar. 10, 2019
+ * @version Sep. 19, 2019
  * @author  ASAMI, Tomoharu
  */
-trait ChartDriver extends Loggable {
-  def draw(p: S2DSpace): SWindow
-}
+// trait ChartDriver extends Loggable {
+//   def draw(p: S2DSpace): SWindow
+// }

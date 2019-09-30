@@ -6,6 +6,7 @@ import scala.util.Try
 import scala.util.control.NonFatal
 import scala.concurrent.{Future, Promise, Await}
 import scala.concurrent.duration.Duration
+import java.util.Locale
 import java.net.{URL, URI}
 import org.joda.time._
 import play.api.libs.json._
@@ -13,22 +14,25 @@ import org.goldenport.RAISE
 import org.goldenport.Strings
 import org.goldenport.i18n.{I18NString, I18NTemplate}
 import org.goldenport.collection.NonEmptyVector
+import org.goldenport.extension.IWindow
 import org.goldenport.matrix.IMatrix
 import org.goldenport.record.v2.Schema
-import org.goldenport.record.v3.{IRecord, Record, ITable}
+import org.goldenport.record.v3.{IRecord, Record, ITable, RecordSequence}
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.record.store.Query
+import org.goldenport.record.chart.{Chart, Space, Series, Particle}
 import org.goldenport.value._
-import org.goldenport.values.Urn
+import org.goldenport.values.{Urn, NumberRange, ValueRange, NumberInterval, DateTimePeriod, Money, Percent}
 import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource}
 import org.goldenport.bag.{ChunkBag, StringBag}
 import org.goldenport.xml.dom.{DomParser, DomUtils}
 import org.goldenport.parser.{LogicalToken, ParseResult}
+import org.goldenport.parser.ScriptToken
 import org.goldenport.parser.CommandParser
 import org.goldenport.xsv.Lxsv
-import org.goldenport.util.StringUtils
+import org.goldenport.util.{StringUtils, AnyRefUtils}
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
-import org.goldenport.sexpr.eval.chart.Chart
+// import org.goldenport.sexpr.eval.chart.Chart
 
 /**
  * @since   Sep.  9, 2012
@@ -51,7 +55,8 @@ import org.goldenport.sexpr.eval.chart.Chart
  *  version May. 21, 2019
  *  version Jun. 30, 2019
  *  version Jul. 29, 2019
- * @version Aug. 25, 2019
+ *  version Aug. 25, 2019
+ * @version Sep. 29, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -60,7 +65,8 @@ sealed trait SExpr {
   def getList: Option[List[SExpr]] = None
   //  def asNumber: SNumber = RAISE.unsupportedOperationFault(s"Not number(${this})")
   def getString: Option[String] = None
-  def asObject: Any = asString
+  def asObject: Any = getString getOrElse this
+  def asJavaObject: Object = asObject.asInstanceOf[Object] // used by java features (e.g. formatter)
   def asString: String = getString getOrElse RAISE.unsupportedOperationFault(s"Not string(${this})")
   def asInt: Int = RAISE.unsupportedOperationFault(s"Not number(${this})")
   def asLong: Long = RAISE.unsupportedOperationFault(s"Not number(${this})")
@@ -194,10 +200,9 @@ case class SKeyword(name: String) extends SExpr {
   // def show = ":" + name
 }
 
-// TODO add SInt, SDouble, SBigDecimal and turn to trait.
-// TODO unify SRational, SComplex as SNumber
-case class SNumber(number: BigDecimal) extends SExpr {
+case class SNumber(number: spire.math.Number) extends SExpr {
   override def asObject = number
+  override def asJavaObject = number.toBigDecimal.bigDecimal
   override lazy val asString = number.toString
   override def getString = Some(asString)
   // def print = show
@@ -206,9 +211,14 @@ case class SNumber(number: BigDecimal) extends SExpr {
   override lazy val asLong: Long = number.toLong
   override lazy val asFloat: Float = number.toFloat
   override lazy val asDouble: Double = number.toDouble
-  override def asBigDecimal = number
+  override def asBigDecimal = number.toBigDecimal
+  def toRange: SRange = SRange(ValueRange(number))
 
   def +(rhs: SNumber): SNumber = SNumber(number + rhs.number)
+  def -(rhs: SNumber): SNumber = SNumber(number - rhs.number)
+  def *(rhs: SNumber): SNumber = SNumber(number * rhs.number)
+  def *(rhs: SMatrix): SMatrix = rhs * this
+  def /(rhs: SNumber): SNumber = SNumber(number / rhs.number)
 }
 object SNumber {
   val ZERO = SNumber(BigDecimal(0))
@@ -252,6 +262,7 @@ case class SComplex(number: spire.math.Complex[Double]) extends SExpr {
 }
 
 case class SBoolean(value: Boolean) extends SExpr {
+  override def asObject: Any = value
   override def isNilOrFalse = !value
   override def getString = Some(value.toString)
   // def print = show
@@ -271,6 +282,16 @@ object SBoolean {
       case _ => true
     }
   }
+}
+
+case class SRange(range: NumberRange) extends SExpr {
+  override protected def print_String = range.print
+}
+
+case class SInterval(interval: NumberInterval) extends SExpr {
+  override protected def print_String = interval.print
+
+  def toRange: SRange = SRange(interval.toRange)
 }
 
 case class SString(string: String) extends SExpr {
@@ -366,10 +387,19 @@ case class SError(
   incident: Option[Incident],
   errors: Option[NonEmptyVector[SError]]
 ) extends SExpr {
+  override def asObject = exception getOrElse this
   def message: String = label orElse incident.map(_.show) orElse exception.map(_.toString) getOrElse errors.map(_.list.map(_.show).mkString(";")).getOrElse("")
   // override def print = detailTitle
   // override def show = detailTitle
   override def titleInfo = message
+  protected override def show_Content = exception.flatMap(e =>
+    Option(e.getStackTrace).flatMap(ss =>
+      if (ss.isEmpty)
+        None
+      else
+        Some("Stack:\n" + ss.map(_.toString).mkString("\n"))
+    )
+  )
   override def descriptionContent = Vector(
     exception.flatMap(e =>
       Option(e.getStackTrace).flatMap(ss =>
@@ -489,13 +519,13 @@ class PromiseProcess() extends IProcess {
   def success(p: SExpr): Unit = promise.success(p)
 }
 
-trait IWindow {
-  def close(): Unit
-}
+// trait IWindow {
+//   def close(): Unit
+// }
 
-class JavaFXWindow(window: org.goldenport.javafx.JavaFXWindow) extends IWindow {
-  def close() = window.close()
-}
+// class JavaFXWindow(window: org.goldenport.javafx.JavaFXWindow) extends IWindow {
+//   def close() = window.close()
+// }
 
 // trait IMatrix
 // trait IPath
@@ -572,6 +602,7 @@ case class SQuery(query: Query) extends SExpr {
 }
 
 case class SRecord(record: IRecord) extends SExpr {
+  override def asObject: Any = record
   override def getString = Some(record.show)
   override protected def print_String = record.print
   override protected def show_Content = Some(record.show)
@@ -583,14 +614,18 @@ object SRecord {
 }
 
 case class STable(table: ITable) extends SExpr {
+  override def asObject: Any = table
   override def getString = Some(display)
   override val titleInfo = s"${table.width}x${table.height}"
   override protected def print_String = table.print
   override protected def display_String = table.display
   override protected def show_Content: Option[String] = Some(table.show)
+  def width = table.width
+  def height = table.height
 }
 
 case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
+  override def asObject: Any = matrix
   override def getString = Some(display)
   override val titleInfo = s"${matrix.width}x${matrix.height}"
   override protected def print_String = matrix.print
@@ -598,7 +633,14 @@ case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
   override protected def show_Content: Option[String] = Some(matrix.show)
 
   def transpose: SMatrix = SMatrix(matrix.transpose)
+  def t: SMatrix = transpose
+  def inv: SMatrix = SMatrix(matrix.inv)
+  def det: SNumber = SNumber(matrix.det)
+  def rank: SNumber = SNumber(matrix.rank)
   def +(rhs: SMatrix): SMatrix = SMatrix(matrix + rhs.matrix)
+  def -(rhs: SMatrix): SMatrix = SMatrix(matrix - rhs.matrix)
+  def *(rhs: SMatrix): SMatrix = SMatrix(matrix * rhs.matrix)
+  def *(rhs: SNumber): SMatrix = SMatrix(matrix * rhs.asDouble)
 }
 object SMatrix {
   import org.goldenport.matrix._
@@ -685,13 +727,24 @@ case class SExpression(expression: String) extends SExpr {
 }
 
 // ScriptEngine, JEXL
-case class SScript(language: Option[String], text: String) extends SExpr {
+case class SScript(
+  language: Option[String],
+  properties: Record,
+  text: String,
+  format: Option[String]
+) extends SExpr {
   override def getString = Some(text)
   // def print = show
   // def show = text
 }
 object SScript {
-  def apply(p: String): SScript = SScript(None, p)
+  def apply(p: String): SScript = SScript(None, Record.empty, p, None)
+  def apply(prefix: String, p: String): SScript = SScript(Some(prefix), Record.empty, p, None)
+  def apply(prefix: Option[String], p: String): SScript = SScript(prefix, Record.empty, p, None)
+  def apply(prefix: Option[String], properties: Option[String], p: String, postfix: Option[String]): SScript =
+    SScript(prefix, Record.fromLxsv(properties), p, postfix)
+
+  def create(p: ScriptToken): SScript = SScript(p.prefix, p.properties, p.text, p.postfix)
 }
 
 case class SProcess(process: IProcess) extends SExpr {
@@ -716,7 +769,7 @@ case class SSingleQuote() extends SExpr {
   // def show = "SingleQuote()"
 }
 
-case class SBean(o: AnyRef) extends SExpr { // JavaBeans
+case class SBean(o: AnyRef) extends SExpr { // JavaBeans or Java Object
   override def getString = Some(o.toString)
   // def print = show
   // def show = o.toString
@@ -826,11 +879,16 @@ case class SPug(pug: String) extends SExpr {
   lazy val nekodom = RAISE.notImplementedYetDefect
 }
 
-sealed trait SJson extends SExpr {
+sealed trait SJson extends SExpr with IDom {
   def text: String
   def json: JsValue
   override def getString = Some(text)
   override def asString = text
+
+  lazy val dom = Record.createRecordOrSequence(json) match {
+    case Right(r) => r
+    case Left(l) => l
+  }
 }
 object SJson {
   def apply(text: String): SJson = StringSJson(text)
@@ -856,6 +914,8 @@ case class JsValueSJson(json: JsValue) extends SJson {
 
 case class SDateTime(datetime: DateTime) extends SExpr {
   override def asObject = datetime
+//  override def asJavaObject = new java.time.ZonedDateTime() // Java 8
+  override def asJavaObject = datetime.toCalendar(Locale.US)
   override def getString = Some(datetime.toString)
   // def print = show
   // def show = datetime.toString
@@ -863,6 +923,8 @@ case class SDateTime(datetime: DateTime) extends SExpr {
 
 case class SLocalDateTime(datetime: LocalDateTime) extends SExpr {
   override def asObject = datetime
+//  override def asJavaObject = new java.time.LocalDateTime() // Java 8
+  override def asJavaObject = new java.sql.Timestamp(datetime.toDateTime.getMillis)
   override def getString = Some(datetime.toString)
   // def print = show
   // def show = datetime.toString
@@ -892,20 +954,41 @@ case class SMonthDay(monthday: MonthDay) extends SExpr {
   def day: Int = monthday.getDayOfMonth
 }
 
-case class SInterval(interval: Interval) extends SExpr {
+/*
+ * An interval in Joda-Time represents an interval of time from one millisecond instant to another instant.
+ * 
+ * See org.joda.time.Interval
+ * See https://stackoverflow.com/questions/2653567/joda-time-whats-the-difference-between-period-interval-and-duration
+ */
+case class SDateTimeInterval(interval: DateTimePeriod) extends SExpr {
   override def asObject = interval
   override def getString = Some(interval.toString)
   // def print = show
   // def show = interval.toString
 }
 
+/*
+ * A duration in Joda-Time represents a duration of time measured in milliseconds.
+ * 
+ * See scala.concurrent.duration.Duration
+ * See https://stackoverflow.com/questions/2653567/joda-time-whats-the-difference-between-period-interval-and-duration
+ */
 case class SDuration(duration: Duration) extends SExpr {
   override def asObject = duration
   override def getString = Some(duration.toString)
   // def print = show
   // def show = duration.toString
 }
+object SDuration {
+  def apply(p: org.joda.time.Duration): SDuration = SDuration(Duration.fromNanos(p.getMillis))
+}
 
+/*
+ * A period in Joda-Time represents a period of time defined in terms of fields, for example, 3 years 5 months 2 days and 7 hours.
+ * 
+ * See org.joda.time.Period
+ * See https://stackoverflow.com/questions/2653567/joda-time-whats-the-difference-between-period-interval-and-duration
+ */
 case class SPeriod(period: Period) extends SExpr {
   override def asObject = period
   override def getString = Some(period.toString)
@@ -913,14 +996,14 @@ case class SPeriod(period: Period) extends SExpr {
   // def show = period.toString
 }
 
-case class SCurrency(currency: BigDecimal) extends SExpr { // TODO I18N
-  override def asObject = currency
-  override def getString = Some(currency.toString)
+case class SMoney(money: Money) extends SExpr {
+  override def asObject = money
+  override def getString = Some(money.toString)
   // def print = show
   // def show = currency.toString
 }
 
-case class SPercent(percent: BigDecimal) extends SExpr {
+case class SPercent(percent: Percent) extends SExpr {
   override def asObject = percent
   override def getString = Some(percent.toString)
   // def print = show
@@ -933,93 +1016,140 @@ case class SUnit(unit: String) extends SExpr {
   // def show = unit
 }
 
-case class S2DSpace(
-  serieses: Vector[S2DSpace.Series],
-  chart: Option[Chart]
+case class SChart(
+  chart: Chart
 ) extends SExpr {
 }
-object S2DSpace {
-  case class Series(
-    name: String,
-    label: Option[I18NString],
-    elements: Vector[Particle]
-  ) {
-    def getLabel(no: Int): Option[String] = elements.lift(no).flatMap(_.label)
-    def getTooltip(no: Int): Option[String] = elements.lift(no).flatMap(_.tooltip)
-    def getUrl(no: Int): Option[URL] = elements.lift(no).flatMap(_.url)
-  }
-  object Series {
-    def apply(name: String, elements: Seq[Particle]): Series = Series(name, None, elements.toVector)
-    def apply(name: String, label: Option[I18NString], elements: Seq[Particle]): Series = new Series(name, label, elements.toVector)
-  }
 
-  trait Particle {
-    def x: Double
-    def y: Double
-    def label: Option[String]
-    def tooltip: Option[String]
-    def url: Option[URL]
-  }
-
-  case class Point(
-    x: Double,
-    y: Double,
-    label: Option[String],
-    tooltip: Option[String],
-    url: Option[URL]
-  ) extends Particle
-  object Point {
-    def apply(x: Double, y: Double, label: String): Point =
-      Point(x, y, Some(label), None, None)
-  }
-
-  def apply(name: String, ps: Seq[S2DSpace.Particle], c: Chart): S2DSpace = {
-    val s = Series(name, ps)
-    S2DSpace(Vector(s), Some(c))
-  }
+object SChart {
 }
 
-case class S3DSpace(
-  serieses: Vector[S3DSpace.Series],
-  chart: Option[Chart]
+case class SChartSpace(
+  space: Space
 ) extends SExpr {
-
 }
-object S3DSpace {
-  case class Series(
-    name: String,
-    label: Option[I18NString],
-    elements: Vector[Particle]
-  ) {
-    def getLabel(no: Int): Option[String] = elements.lift(no).flatMap(_.label)
-    def getTooltip(no: Int): Option[String] = elements.lift(no).flatMap(_.tooltip)
-    def getUrl(no: Int): Option[URL] = elements.lift(no).flatMap(_.url)
+object SChartSpace {
+  def apply(name: String, ps: Seq[Particle]): SChartSpace = {
+    val s = Series.shape(name, ps)
+    SChartSpace(Space(Vector(s)))
   }
-  object Series {
-    def apply(name: String, elements: Seq[Particle]): Series = Series(name, None, elements.toVector)
-  }
-
-  trait Particle {
-    def x: Double
-    def y: Double
-    def z: Double
-    def label: Option[String]
-    def tooltip: Option[String]
-    def url: Option[URL]
-  }
-
-  case class Point(
-    x: Double,
-    y: Double,
-    z: Double,
-    label: Option[String],
-    tooltip: Option[String],
-    url: Option[URL]
-  ) extends Particle
-
-  def apply(ps: Seq[S3DSpace.Particle], c: Chart): S3DSpace =
-    S3DSpace(Vector(Series("XYZ", ps)), Some(c))
 }
+
+case class SChartSeries(
+  series: Series
+) extends SExpr {
+}
+
+object SChartSeries {
+  def apply(name: String, ps: Seq[Particle]): SChartSeries =
+    SChartSeries(Series.shape(name, ps))
+}
+
+// case class SSpace2D(
+//   space: Space2D
+// ) extends SExpr {
+// }
+
+// object SSpace2D {
+//   def apply(name: String, ps: Seq[Particle], c: Chart): SSpace2D = {
+//     val s = Series.shape(name, ps)
+//     SSpace2D(Space2D(Vector(s), Some(c)))
+//   }
+// }
+
+// case class S2DSpace(
+//   serieses: Vector[S2DSpace.Series],
+//   chart: Option[Chart]
+// ) extends SExpr {
+// }
+// object S2DSpace {
+//   case class Series(
+//     name: String,
+//     label: Option[I18NString],
+//     elements: Vector[Particle],
+//     linesVisible: Boolean,
+//     shapsVisible: Boolean
+//   ) {
+//     def getLabel(no: Int): Option[String] = elements.lift(no).flatMap(_.label)
+//     def getTooltip(no: Int): Option[String] = elements.lift(no).flatMap(_.tooltip)
+//     def getUrl(no: Int): Option[URL] = elements.lift(no).flatMap(_.url)
+//   }
+//   object Series {
+//     def shape(name: String, elements: Seq[Particle]): Series = Series(name, None, elements.toVector, false, true)
+//     def shape(name: String, label: Option[I18NString], elements: Seq[Particle]): Series = new Series(name, label, elements.toVector, false, true)
+//     def line(ps: Seq[Point]): Series = new Series("#line", None, ps.toVector, true, false)
+//   }
+
+//   trait Particle {
+//     def x: Double
+//     def y: Double
+//     def label: Option[String]
+//     def tooltip: Option[String]
+//     def url: Option[URL]
+//   }
+
+//   case class Point(
+//     x: Double,
+//     y: Double,
+//     label: Option[String],
+//     tooltip: Option[String],
+//     url: Option[URL]
+//   ) extends Particle
+//   object Point {
+//     def apply(x: Double, y: Double, label: String): Point =
+//       Point(x, y, Some(label), None, None)
+
+//     def apply(x: Double, y: Double): Point =
+//       Point(x, y, None, None, None)
+//   }
+
+//   def apply(name: String, ps: Seq[S2DSpace.Particle], c: Chart): S2DSpace = {
+//     val s = Series.shape(name, ps)
+//     S2DSpace(Vector(s), Some(c))
+//   }
+// }
+
+// case class S3DSpace(
+//   serieses: Vector[S3DSpace.Series],
+//   chart: Option[Chart]
+// ) extends SExpr {
+
+// }
+// object S3DSpace {
+//   case class Series(
+//     name: String,
+//     label: Option[I18NString],
+//     elements: Vector[Particle]
+//   ) {
+//     def getLabel(no: Int): Option[String] = elements.lift(no).flatMap(_.label)
+//     def getTooltip(no: Int): Option[String] = elements.lift(no).flatMap(_.tooltip)
+//     def getUrl(no: Int): Option[URL] = elements.lift(no).flatMap(_.url)
+//   }
+//   object Series {
+//     def apply(name: String, elements: Seq[Particle]): Series = Series(name, None, elements.toVector)
+//   }
+
+//   trait Particle {
+//     def x: Double
+//     def y: Double
+//     def z: Double
+//     def label: Option[String]
+//     def tooltip: Option[String]
+//     def url: Option[URL]
+//   }
+
+//   case class Point(
+//     x: Double,
+//     y: Double,
+//     z: Double,
+//     label: Option[String],
+//     tooltip: Option[String],
+//     url: Option[URL]
+//   ) extends Particle
+
+//   def apply(ps: Seq[S3DSpace.Particle], c: Chart): S3DSpace =
+//     S3DSpace(Vector(Series("XYZ", ps)), Some(c))
+// }
 
 trait SExtension extends SExpr {
 }
@@ -1138,6 +1268,7 @@ object SExpr {
   def createOrNil(p: Option[Any]): SExpr = p.map(create).getOrElse(SNil)
 
   def create(p: Any): SExpr = p match {
+    case null => SNil // result of ScriptEngine
     case m: SExpr => m
     case m: Boolean => SBoolean.create(m)
     case m: Byte => SNumber(m)
@@ -1146,12 +1277,15 @@ object SExpr {
     case m: Long => SNumber(m)
     case m: Float => SNumber(m)
     case m: Double => SNumber(m)
+    case m: NumberRange => SRange(m)
     case m: String => SString(m)
     case m: java.math.BigInteger => SNumber(BigDecimal(m))
     case m: BigInt => SNumber(BigDecimal(m))
     case m: java.math.BigDecimal => SNumber(BigDecimal(m))
     case m: BigDecimal => SNumber(m)
     case m: IRecord => SRecord(m)
+    case m: ITable => STable(m)
+    case m: IMatrix[_] => SMatrix(m.asInstanceOf[IMatrix[Double]]) // XXX
     case m: org.w3c.dom.Node => SXml(m)
     // case m: org.w3c.dom.NodeList => m.getLength match {
     //   case 0 => SNil
@@ -1170,7 +1304,9 @@ object SExpr {
     case m: JsObject => SJson(m)
     case JsArray(vs) => SList.create(vs.map(SExpr.create))
     case m: LogicalToken => SExprParserNew.parse(m)
-    case m => RAISE.notImplementedYetDefect(s"SExpr#create(${m})") // SObject(m) // TODO
+    case m: Throwable => SError(m)
+    case m: AnyRef => SBean(m)
+    case m => SBean(AnyRefUtils.toAnyRef(m))
   }
 
   def create(s: Option[CreateStrategy], p: Any): SExpr =

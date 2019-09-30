@@ -1,7 +1,7 @@
 package org.goldenport.sexpr.eval
 
 import scala.util.control.NonFatal
-import org.goldenport.exception.RAISE
+import org.goldenport.RAISE
 import org.goldenport.log.LogMark, LogMark._
 import org.goldenport.i18n.I18NContext
 import org.goldenport.record.v3.Record
@@ -14,6 +14,7 @@ import org.goldenport.sexpr.eval.repository.RepositoryFunction
 import org.goldenport.sexpr.eval.projector.ProjectorFunction
 import org.goldenport.sexpr.eval.camel.CamelFunction
 import org.goldenport.sexpr.eval.aws.AwsFunction
+import org.goldenport.sexpr.eval.sci.SciFunction
 
 /*
  * @since   Aug.  8, 2013
@@ -27,7 +28,8 @@ import org.goldenport.sexpr.eval.aws.AwsFunction
  *  version May. 26, 2019
  *  version Jun. 24, 2019
  *  version Jul. 28, 2019
- * @version Aug. 24, 2019
+ *  version Aug. 31, 2019
+ * @version Sep. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -109,11 +111,18 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   protected def apply_lambda(c: LispContext, l: SLambda, args: List[SExpr]): LispContext =
     apply_lambda_lexical_scope(c, l, args)
 
-  protected def apply_lambda_lexical_scope(c: LispContext, l: SLambda, args: List[SExpr]): LispContext = {
+  protected def apply_lambda_lexical_scope(pc: LispContext, l: SLambda, pargs: List[SExpr]): LispContext = {
+    val (c, args) = _resolve_parameters(pc, l, pargs)
     if (l.parameters.length > args.length)
       RAISE.syntaxErrorFault(s"""Missing argument for lambda($l): ${args.mkString(",")}""")
     apply_Lambda(c, l, args)
   }
+
+  private def _resolve_parameters(c: LispContext, l: SLambda, args: List[SExpr]): (LispContext, List[SExpr]) =
+    resolve_Parameters(c, l, args)
+
+  protected def resolve_Parameters(c: LispContext, l: SLambda, args: List[SExpr]): (LispContext, List[SExpr]) =
+    (c, args)
 
   protected def apply_Lambda(c: LispContext, l: SLambda, args: List[SExpr]): LispContext = {
     val bindings = Record.create(l.parameters.zip(args))
@@ -166,9 +175,14 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
 
   private def _is_lazy(p: SExpr) = p.getList.exists(_.isInstanceOf[SControl])
 
-  protected def eval_context(c: LispContext): LispContext = {
-    // println(s"LispEvaluator#evel_context: ${c.bindings}")
-    // println(s"LispEvaluator#evel_context: ${c.value}")
+  protected def eval_context(c: LispContext): LispContext =
+    c.value match {
+      case m: SScript => eval_script_to_context(m)
+      case m: SExpression => eval_expression_to_context(m)
+      case m => _eval_context(c)
+    }
+
+  private def _eval_context(c: LispContext): LispContext = {
     val r: SExpr = c.value match {
       case m: SAtom => eval_Atom(m).orElse(c.getBindedValue(m.name)).getOrElse(SError.bindingNotFound(m.name))
       case m @ SCell(car, _) if car.isInstanceOf[SCell] => SError.Unevaluatable(m)
@@ -192,8 +206,22 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
 
   override protected def eval_script_to_context(p: SScript): C = {
     val ctx = create_Eval_Context()
-    lift_Context(ctx.script.eval(p))
+    lift_Context(format_context(p.format, ctx.script.eval(p)))
   }
+
+  override protected def eval_expression_to_context(p: SExpression): C = {
+    val ctx = create_Eval_Context()
+    lift_Context(ctx.toResult(ctx.script.eval(p)))
+  }
+
+  protected final def format_context(rule: Option[String], c: LispContext): LispContext =
+    rule.map(format_context(_, c)).getOrElse(c)
+
+  protected final def format_context(rule: String, c: LispContext): LispContext =
+    c.toResult(format_to_string(c, rule, c.value))
+
+  protected final def format_to_string(c: LispContext, rule: String, p: SExpr): SString =
+    c.format(rule, p)
 }
 object LispEvaluator {
   def apply(p: LispConfig, i18ncontext: I18NContext): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
@@ -214,6 +242,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   def useChart: Boolean = true
   def useCamel: Boolean = true
   def useAws: Boolean = true
+  def useSci: Boolean = true
 
   private lazy val _functions: Vector[LispFunction] = {
     import LispFunction._
@@ -221,18 +250,21 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       EvalOrInvoke, Quote, Setq,
       Pop, Peek, Mute, History, CommandHistory,
       Car, Cdr, And, Or,
-      Plus, Minus,
+      Plus, Minus, Multify,
       Length,
+      Inv,
+      StringInterpolate, StringFormat, StringMessage, StringMessageKey,
       PathGet, Transform, Xslt,
       Fetch, Retry, Sh,
       HttpGet, HttpPost, HttpPut, HttpDelete,
-      MatrixLoad, MatrixChart,
+      VectorVerticalFill,
+      MatrixHorizontalConcatenate, MatrixLoad, MatrixChart,
       RecordMake,
-      TableLoad, TableMake, TableChart
+      TableLoad, TableMake, TableMatrix, TableChart
     ) ++ EmacsLispFunction.functions ++ SchemeFunction.functions ++
     _sql_functions ++ _store_functions ++ _entity_functions ++ _repository_functions ++
     _chart_functions ++
-    _projector_functions ++ _camel_functions ++ _aws_functions
+    _projector_functions ++ _camel_functions ++ _aws_functions ++ _sci_functions
   }
 
   private def _sql_functions = 
@@ -276,6 +308,12 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   private def _aws_functions = 
     if (useAws)
       AwsFunction.functions
+    else
+      Vector.empty
+
+  private def _sci_functions = 
+    if (useSci)
+      SciFunction.functions
     else
       Vector.empty
 

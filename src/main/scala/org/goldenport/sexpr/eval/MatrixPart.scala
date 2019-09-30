@@ -2,18 +2,20 @@ package org.goldenport.sexpr.eval
 
 import java.net.URI
 import breeze.linalg.{Vector => BVector, _}
-import breeze.plot._
+// import breeze.plot._
 import org.goldenport.RAISE
 import org.goldenport.record.v2.bag.CsvBag
+import org.goldenport.record.chart.{Chart, Space}
 import org.goldenport.matrix.IMatrix
 import org.goldenport.sexpr._
-import org.goldenport.sexpr.eval.chart.Chart
+// import org.goldenport.sexpr.eval.chart.Chart
 
 /*
  * @since   Feb.  9, 2019
  *  version Feb. 12, 2019
  *  version Mar. 10, 2019
- * @version Aug.  4, 2019
+ *  version Aug.  4, 2019
+ * @version Sep. 19, 2019
  * @author  ASAMI, Tomoharu
  */
 trait MatrixPart { self: LispFunction =>
@@ -45,12 +47,13 @@ trait MatrixPart { self: LispFunction =>
     // p.ylabel = "y axis"
     // f.refresh()
     // SWindow(MatrixPart.BreezeFigureWindow(f))
+    val plots = Vector.empty
+    val series = SChartSeries("XY", plots)
     val chart = Chart.empty.
       withXLabel("x axis").
-      withYLabel("y axis")
-    val plots = Vector.empty
-    val space = S2DSpace("XY", plots, chart)
-    u.feature.chart.draw(space)
+      withYLabel("y axis").
+      withSeries(series.series)
+    u.feature.chart.draw(chart)
   }
 }
 

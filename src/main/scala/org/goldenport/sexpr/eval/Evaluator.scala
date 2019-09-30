@@ -1,5 +1,6 @@
 package org.goldenport.sexpr.eval
 
+import scala.util.control.NonFatal
 import scala.collection.mutable.{Stack, HashMap}
 import org.goldenport.log.{LogMark, Loggable}, LogMark._
 import org.goldenport.sexpr._
@@ -20,7 +21,9 @@ import org.goldenport.sexpr._
  *  version Mar. 10, 2019
  *  version Apr. 20, 2019
  *  version May.  3, 2019
- * @version Jul. 25, 2019
+ *  version Jul. 25, 2019
+ *  version Aug. 31, 2019
+ * @version Sep. 16, 2019
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator[C <: EvalContext] extends Loggable {
@@ -69,6 +72,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case keyword: SKeyword => eval_keyword(keyword)
       case num: SNumber => eval_number(num)
       case m: SRational => m
+      case m: SComplex => m
       case b: SBoolean => eval_boolean(b)
       case s: SString => eval_string(s)
       case xs: SList => eval_list(xs)
@@ -83,7 +87,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case m: SMatrix => m
       case m: SUrl => m
       case m: SUrn => m
-      case m: SScript =>  eval_script(m)
+      case m: SScript => eval_script(m)
       case x: SXml => eval_xml(x)
       case m: SHtml => m
       case m: SXPath => m
@@ -109,10 +113,10 @@ trait Evaluator[C <: EvalContext] extends Loggable {
 
   protected def eval_Atom(atom: SAtom): Option[SExpr] = None
 
-  private def _eval_atom(atom: SAtom): SExpr = _eval_atom_option(atom).
+  private def _eval_atom(atom: SAtom): SExpr = eval_atom_option(atom).
     getOrElse(SError.bindingNotFound(atom.name))
 
-  private def _eval_atom_option(atom: SAtom): Option[SExpr] =
+  protected final def eval_atom_option(atom: SAtom): Option[SExpr] =
     _stack.toStream.flatMap(_.get(atom)).headOption.orElse {
       val cs = Vector(create_Eval_Context(Nil))
       _stack.toStream.flatMap(_.function(atom)).headOption match {
@@ -167,7 +171,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
 
   protected def eval_expression(p: SExpression): SExpr = {
     val atom = SAtom(p.expression)
-    _eval_atom_option(atom).
+    eval_atom_option(atom).
       getOrElse(SError.bindingNotFound(p.expression))
   }
 
@@ -193,7 +197,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
   }
 */
 
-  protected def eval_to_context(expr: SExpr): C = {
+  protected def eval_to_context(expr: SExpr): C = try {
     expr match {
       case atom: SAtom => eval_atom_to_context(atom)
       case keyword: SKeyword => eval_keyword_to_context(keyword)
@@ -219,6 +223,8 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case p: SPseudo => eval_pseudo_to_context(p)
       case m => create_Eval_Context(m)
     }
+  } catch {
+    case NonFatal(e) => create_Eval_Context(SError(e))
   }
 
   protected def eval_atom_to_context(atom: SAtom): C = {
@@ -277,6 +283,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
     create_Eval_Context(eval_urn(p))
   }
 
+  // override by LispEvaluator
   protected def eval_script_to_context(p: SScript): C = {
     create_Eval_Context(eval_script(p))
   }
@@ -295,6 +302,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
     r
   }
 
+  // override by LispEvaluator
   protected def eval_expression_to_context(p: SExpression): C = {
     create_Eval_Context(eval_expression(p))
   }
