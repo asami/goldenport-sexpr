@@ -29,7 +29,8 @@ import org.goldenport.sexpr.eval.sci.SciFunction
  *  version Jun. 24, 2019
  *  version Jul. 28, 2019
  *  version Aug. 31, 2019
- * @version Sep. 30, 2019
+ *  version Sep. 30, 2019
+ * @version Oct.  1, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -59,6 +60,7 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   }
 
   protected def apply_context(c: LispContext): LispContext = {
+    // println(s"apply_context: $c")
     val ctx0 = lift_Context(c)
     val ctx1 = syntax_expansion(ctx0)
     val ctx = macro_expansion(ctx1)
@@ -183,8 +185,12 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     }
 
   private def _eval_context(c: LispContext): LispContext = {
+    // println(s"_eval_context: ${c.value}")
     val r: SExpr = c.value match {
-      case m: SAtom => eval_Atom(m).orElse(c.getBindedValue(m.name)).getOrElse(SError.bindingNotFound(m.name))
+      case m: SAtom => eval_Atom(m).
+          orElse(c.getBindedValue(m.name)).
+          orElse(get_binded_value(m)).
+          getOrElse(SError.bindingNotFound(m.name))
       case m @ SCell(car, _) if car.isInstanceOf[SCell] => SError.Unevaluatable(m)
       // case m: SCell => eval(m)
       // case m => m

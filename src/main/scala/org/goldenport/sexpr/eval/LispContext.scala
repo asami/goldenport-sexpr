@@ -32,7 +32,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Jun.  9, 2019
  *  version Jul. 14, 2019
  *  version Aug. 17, 2019
- * @version Sep. 30, 2019
+ *  version Sep. 30, 2019
+ * @version Oct.  1, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
@@ -64,6 +65,7 @@ trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
         case x :: xs =>
           // log.trace(s"reduct input($x): $xs")
           val a = xs.map(x => evaluator(pure(x)).value)
+          log.trace(s"reduct input($x): $xs => $a")
           pure(SList.create(x +: a))
       }
       case _ => this
@@ -206,7 +208,7 @@ object LispContext {
   def apply(
     config: LispConfig,
     i18ncontext: I18NContext,
-    evaluator: LispContext => LispContext,
+    evaluator: LispContext => LispContext, // apply_context
     x: SExpr
   ): LispContext = {
     val scriptContext = ScriptEngineContext.default

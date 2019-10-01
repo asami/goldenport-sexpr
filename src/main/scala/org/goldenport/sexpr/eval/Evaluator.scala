@@ -23,7 +23,8 @@ import org.goldenport.sexpr._
  *  version May.  3, 2019
  *  version Jul. 25, 2019
  *  version Aug. 31, 2019
- * @version Sep. 16, 2019
+ *  version Sep. 16, 2019
+ * @version Oct.  1, 2019
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator[C <: EvalContext] extends Loggable {
@@ -36,10 +37,13 @@ trait Evaluator[C <: EvalContext] extends Loggable {
     _stack.push(binding)
   }
 
-  protected def get_function[T](ctx: C): Option[LispFunction] = 
+  protected final def get_function[T](ctx: C): Option[LispFunction] = 
     _stack.toStream.flatMap(_.getFunction(ctx)).headOption
 
-  protected def get_macro[T](ctx: C): Option[LispMacro] = None // TODO
+  protected final def get_binded_value(atom: SAtom): Option[SExpr] =
+    _stack.toStream.flatMap(_.get(atom)).headOption
+
+  protected final def get_macro[T](ctx: C): Option[LispMacro] = None // TODO
 
   def parse(in: CharSequence): SExpr = SExprParserNew(in)
 
@@ -107,7 +111,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
   protected def eval_atom(atom: SAtom): SExpr = {
     if (_stack.isEmpty)
       throw new IllegalStateException("Stack should be pushed init binding.")
-    // println(s"Evaluator:eval_atom($atom): ${_stack}")
+    log_trace(s"Evaluator:eval_atom($atom): ${_stack}")
     eval_Atom(atom) getOrElse _eval_atom(atom)
   }
 
@@ -117,7 +121,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
     getOrElse(SError.bindingNotFound(atom.name))
 
   protected final def eval_atom_option(atom: SAtom): Option[SExpr] =
-    _stack.toStream.flatMap(_.get(atom)).headOption.orElse {
+    get_binded_value(atom).orElse {
       val cs = Vector(create_Eval_Context(Nil))
       _stack.toStream.flatMap(_.function(atom)).headOption match {
         case Some(f) => Some(f(reduction_Context(cs)).value)
@@ -345,10 +349,10 @@ trait Evaluator[C <: EvalContext] extends Loggable {
   protected def is_Control_Function(p: SAtom): Boolean = false
 
   private def _eval_function(f: C => C, p: SList): C = {
-    // println(s"_eval_function: $p")
+    log_trace_start(s"_eval_function: $p")
     val cs = p.list.map(eval_to_context)
     val r = f(reduction_Context(cs))
-    // println(s"_eval_function: $p => $r")
+    log_trace_end(s"_eval_function: $p => $r")
     r
   }
 

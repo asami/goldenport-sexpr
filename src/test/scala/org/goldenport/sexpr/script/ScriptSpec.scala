@@ -12,7 +12,8 @@ import org.goldenport.sexpr._
  *  version Oct. 26, 2018
  *  version Jan.  1, 2019
  *  version Feb. 25, 2019
- * @version May.  6, 2019
+ *  version May.  6, 2019
+ * @version Oct.  1, 2019
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -39,17 +40,17 @@ class ScriptSpec extends WordSpec with Matchers with GivenWhenThen {
       r should be(Script(SExprParser(s)))
     }
     "default script" in {
-      val s = """[1 + 2 + 3]"""
+      val s = """${1 + 2 + 3}"""
       val r = Script.parse(s)
       r should be(Script(SScript(None, "1 + 2 + 3")))
     }
     "javascript" in {
-      val s = """javascript[1 + 2 + 3]"""
+      val s = """javascript${1 + 2 + 3}"""
       val r = Script.parse(s)
       r should be(Script(SScript(Some("javascript"), "1 + 2 + 3")))
     }
     "jexl" in {
-      val s = """jexl[1 + 2 + 3]"""
+      val s = """jexl${1 + 2 + 3}"""
       val r = Script.parse(s)
       r should be(Script(SScript(Some("jexl"), "1 + 2 + 3")))
     }
