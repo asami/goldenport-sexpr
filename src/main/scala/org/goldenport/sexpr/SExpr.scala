@@ -56,7 +56,8 @@ import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncid
  *  version Jun. 30, 2019
  *  version Jul. 29, 2019
  *  version Aug. 25, 2019
- * @version Sep. 29, 2019
+ *  version Sep. 29, 2019
+ * @version Oct. 31, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -134,7 +135,15 @@ sealed trait SExpr {
   /* Show a shortened natural representation with some information for debug. */
   /* SString("apple") => SString[5]: apple */
   lazy val show: String = try {
-    show_Content.fold(s"$longTitle")(s => s"${longTitle}\n${SExpr.toShow(s)}")
+    show_Content.fold(s"$longTitle") { s =>
+      val a = SExpr.toShow(s)
+      if (titleDescription.nonEmpty)
+        s"${longTitle}\n${a}"
+      else if (a.contains('\n') || a.contains('\t'))
+        s"${longTitle}\n${a}"
+      else
+        s"${longTitle} ${a}"
+    }
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#show[$e]"
   }
@@ -605,6 +614,7 @@ case class SRecord(record: IRecord) extends SExpr {
   override def asObject: Any = record
   override def getString = Some(record.show)
   override protected def print_String = record.print
+  override def titleInfo = s"${record.length}"
   override protected def show_Content = Some(record.show)
 }
 object SRecord {
@@ -694,6 +704,25 @@ object SMatrix {
   }
 }
 
+case class SLxsv(lxsv: Lxsv) extends SExpr {
+  override def equals(o: Any): Boolean = o match {
+    case m: SLxsv => lxsv == m.lxsv
+    case _ => false
+  }
+  lazy val text: String = lxsv.print
+  override def getString = Some(text)
+  override def asString = text
+  override protected def print_String = text
+  override def titleInfo = s"${lxsv.length}"
+}
+object SLxsv {
+  val suffix = "lxsv"
+
+  def apply(p: String): SLxsv = SLxsv(Lxsv.create(p))
+
+  def createOption(p: String): Option[SLxsv] = Lxsv.createOption(p).map(SLxsv.apply)
+}
+
 case class SUrl(url: java.net.URL) extends SExpr {
   override def getString = Some(url.toString)
   override lazy val asString = url.toString
@@ -712,9 +741,17 @@ case class SUrl(url: java.net.URL) extends SExpr {
 }
 
 case class SUrn(urn: Urn) extends SExpr {
-  override def getString = Some(urn.toString)
-  override lazy val asString = urn.toString
+  override lazy val getString = Some(asString)
+  override lazy val asString = urn.text
   override def asUri = urn.toURI
+  // def print = show
+  // def show = urn.toString
+}
+
+case class SUri(uri: URI) extends SExpr {
+  override lazy val getString = Some(asString)
+  override lazy val asString = uri.toString
+  override def asUri = uri
   // def print = show
   // def show = urn.toString
 }
@@ -1317,6 +1354,7 @@ object SExpr {
       case m: String => createAuto(m)
       case m: SUrl => createAuto(m)
       case m: SUrn => createAuto(m)
+      case m: SUri => createAuto(m)
       case m: SExpr => normalizeAuto(m)
       case m => create(p)
     }
@@ -1330,6 +1368,7 @@ object SExpr {
 
   def createAuto(p: SUrl): SExpr = create(p) // Should be resolved in LispContext.
   def createAuto(p: SUrn): SExpr = create(p) // Should be resolved in LispContext.
+  def createAuto(p: SUri): SExpr = create(p) // Should be resolved in LispContext.
 
   def createXmlFamilyOption(p: String): Option[SExpr] =
     SHtml.createOption(p) orElse SXsl.createOption(p) orElse SXml.createOption(p)
@@ -1340,6 +1379,7 @@ object SExpr {
     case m: SBlob => m.getString.map(createAuto).getOrElse(create(m))
     case m: SUrl => createAuto(m)
     case m: SUrn => createAuto(m)
+    case m: SUri => createAuto(m)
     case m => m
   }
 
@@ -1392,14 +1432,21 @@ object SExpr {
   def toPrint(s: String): String = s
 
   def toDisplay(s: String): String = {
-    val a = escapeNewlines(Strings.cutstring(s, 76))
+    val a = escapeNewlines(Strings.cutstring(s, 480))
     StringUtils.dropRightNewlines(a)
   }
 
   def toShow(s: Option[String]): String = s.map(toShow).getOrElse("")
 
-  def toShow(s: String): String = {
+  def toShow(s: String): String = toShowLong(s)
+
+  def toShowShort(s: String): String = {
     val a = StringUtils.showConsole(s, "\n")
+    StringUtils.dropRightNewlines(a)
+  }
+
+  def toShowLong(s: String): String = {
+    val a = StringUtils.printConsole(s, "\n", 10)
     StringUtils.dropRightNewlines(a)
   }
 

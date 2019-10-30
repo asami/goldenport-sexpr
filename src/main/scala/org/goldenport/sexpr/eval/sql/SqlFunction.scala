@@ -10,7 +10,8 @@ import org.goldenport.sexpr.eval._
 /*
  * @since   Mar. 23, 2019
  *  version Mar. 24, 2019
- * @version Apr.  8, 2019
+ *  version Apr.  8, 2019
+ * @version Oct.  3, 2019
  * @author  ASAMI, Tomoharu
  */
 object SqlFunction {
@@ -67,7 +68,7 @@ object SqlFunction {
     }
 
     private def _query(ctx: SqlContext, db: Option[Symbol], s: String) = {
-      val rs = db.map(ctx.query(_, s)).getOrElse(ctx.query(s))
+      val rs = db.map(ctx.select(_, s)).getOrElse(ctx.select(s))
       SList.create(rs.map(SRecord.apply))
     }
 

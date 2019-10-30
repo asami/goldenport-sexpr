@@ -4,6 +4,7 @@ import scala.util.control.NonFatal
 import org.goldenport.RAISE
 import org.goldenport.log.LogMark, LogMark._
 import org.goldenport.i18n.I18NContext
+import org.goldenport.parser.CommandParser
 import org.goldenport.record.v3.Record
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.chart.ChartFunction
@@ -30,7 +31,7 @@ import org.goldenport.sexpr.eval.sci.SciFunction
  *  version Jul. 28, 2019
  *  version Aug. 31, 2019
  *  version Sep. 30, 2019
- * @version Oct.  1, 2019
+ * @version Oct. 14, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -256,7 +257,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       EvalOrInvoke, Quote, Setq,
       Pop, Peek, Mute, History, CommandHistory,
       Car, Cdr, And, Or,
-      Plus, Minus, Multify,
+      Plus, Minus, Multify, Divide,
       Length,
       Inv,
       StringInterpolate, StringFormat, StringMessage, StringMessageKey,
@@ -329,6 +330,9 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
 
   // override protected def is_Control_Function(p: SAtom) =
   //   Some(_control_functions.contains(p.name))
+
+  lazy val functionParser: CommandParser[LispFunction] =
+    CommandParser.create(_functions.map(x => x.name -> x))
 
   override def getFunction(c: C): Option[LispFunction] =
     _functions.toStream.filter(_.isDefinedAt(c)).headOption.orElse(

@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import scala.util.control.NonFatal
 import scala.collection.mutable.{Stack, HashMap}
 import org.goldenport.log.{LogMark, Loggable}, LogMark._
+import org.goldenport.parser.CommandParser
 import org.goldenport.sexpr._
 
 /*
@@ -24,7 +25,7 @@ import org.goldenport.sexpr._
  *  version Jul. 25, 2019
  *  version Aug. 31, 2019
  *  version Sep. 16, 2019
- * @version Oct.  1, 2019
+ * @version Oct. 31, 2019
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator[C <: EvalContext] extends Loggable {
@@ -44,6 +45,11 @@ trait Evaluator[C <: EvalContext] extends Loggable {
     _stack.toStream.flatMap(_.get(atom)).headOption
 
   protected final def get_macro[T](ctx: C): Option[LispMacro] = None // TODO
+
+  lazy val functionParser: CommandParser[LispFunction] =
+    _stack.map(_.functionParser)./:(CommandParser.empty[LispFunction]) { (z, x) =>
+      z append x
+    }
 
   def parse(in: CharSequence): SExpr = SExprParserNew(in)
 
@@ -89,6 +95,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case r: SRecord => eval_record(r)
       case t: STable => eval_table(t)
       case m: SMatrix => m
+      case m: SLxsv => m
       case m: SUrl => m
       case m: SUrn => m
       case m: SScript => eval_script(m)
@@ -153,6 +160,8 @@ trait Evaluator[C <: EvalContext] extends Loggable {
 
   protected def eval_matrix(p: SMatrix): SExpr = p
 
+  protected def eval_lxsv(p: SLxsv): SExpr = p
+
   protected def eval_document(p: SDocument): SExpr = p
 
   protected def eval_datetime(p: SDateTime): SExpr = p
@@ -212,6 +221,7 @@ trait Evaluator[C <: EvalContext] extends Loggable {
       case r: SRecord => eval_record_to_context(r)
       case t: STable => eval_table_to_context(t)
       case m: SMatrix => eval_matrix_to_context(m)
+      case m: SLxsv => eval_lxsv_to_context(m)
       case m: SDocument => eval_document_to_context(m)
       case m: SDateTime => eval_datetime_to_context(m)
       case m: SLocalDate => eval_localdate_to_context(m)
@@ -261,6 +271,10 @@ trait Evaluator[C <: EvalContext] extends Loggable {
 
   protected def eval_matrix_to_context(p: SMatrix): C = {
     create_Eval_Context(eval_matrix(p))
+  }
+
+  protected def eval_lxsv_to_context(p: SLxsv): C = {
+    create_Eval_Context(eval_lxsv(p))
   }
 
   protected def eval_document_to_context(p: SDocument): C = {
@@ -506,4 +520,6 @@ trait Binding[C <: EvalContext] {
   protected def is_Control_Function(atom: SAtom): Option[Boolean] = None
 
   def getFunction(ctx: C): Option[LispFunction] = None
+
+  def functionParser: CommandParser[LispFunction]
 }

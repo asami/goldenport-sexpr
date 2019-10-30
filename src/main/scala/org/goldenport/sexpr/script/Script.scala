@@ -6,6 +6,7 @@ import org.goldenport.log.Loggable
 import org.goldenport.parser._
 import org.goldenport.parser.XmlParser.XmlToken
 import org.goldenport.parser.JsonParser.JsonToken
+import org.goldenport.xsv.Lxsv
 import org.goldenport.record.v3._
 import org.goldenport.sexpr._
 
@@ -19,7 +20,8 @@ import org.goldenport.sexpr._
  *  version Jun. 30, 2019
  *  version Jul. 25, 2019
  *  version Aug. 31, 2019
- * @version Sep. 24, 2019
+ *  version Sep. 24, 2019
+ * @version Oct. 31, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -97,9 +99,9 @@ object Script {
 
   trait ScriptParseState extends LogicalTokenReaderWriterState[Config, Script] with Loggable {
     def apply(config: Config, token: LogicalToken): Transition = {
-      log_debug(s"SCRIPT PARSER IN ($this): $token")
+      log_trace(s"SCRIPT PARSER IN ($this): $token")
       val r = handle_event(config, token)
-      log_debug(s"SCRIPT PARSER OUT ($this): $token => $r")
+      log_trace(s"SCRIPT PARSER OUT ($this): $token => $r")
       r
     }
 
@@ -217,6 +219,7 @@ object Script {
         case m: DurationToken => add_Sexpr(config, SDuration(m.duration))
         case m: DateTimeIntervalToken => add_Sexpr(config, SDateTimeInterval(m.interval))
         case m: UrlToken => add_Sexpr(config, SUrl(m.url))
+        case m: UriToken => add_Sexpr(config, SUri(m.uri))
         case m: UrnToken => add_Sexpr(config, SUrn(m.urn))
         case m: PathToken => add_Sexpr(config, SXPath(m.path))
         case m: ExpressionToken => add_Sexpr(config, SExpression(m.text))
@@ -238,6 +241,7 @@ object Script {
         case "s" => SList(SAtom("string-interpolate"), SString(p.text))
         // case "f" => SList(SAtom("string-format"), SString(p.text))
         case "record" => SRecord(_to_record(p.text))
+        case "lxsv" => SLxsv(Lxsv.create(p.text))
         case "regex" => SRegex(new scala.util.matching.Regex(p.text))
         case "xml" => SXml(p.text)
         case "html" => SHtml(p.text)
@@ -266,14 +270,14 @@ object Script {
         p(0) match {
           case '<' => _xml_to_record(p)
           case '{' => _json_to_record(p)
-          case _ => _ltsv_to_record(p)
+          case _ => _lxsv_to_record(p)
         }
 
     private def _xml_to_record(p: String): DomRecord = DomRecord.create(p)
 
     private def _json_to_record(p: String): JsonRecord = JsonRecord.create(p)
 
-    private def _ltsv_to_record(p: String): Record = Record.fromLtsv(p)
+    private def _lxsv_to_record(p: String): Record = Record.fromLxsv(p)
 
     def addChildTransition(config: Config, ps: Vector[SExpr], t: LogicalToken): Transition = 
       add_Sexpr(config, ps).handle_event(config, t)

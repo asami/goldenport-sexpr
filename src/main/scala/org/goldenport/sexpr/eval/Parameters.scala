@@ -20,7 +20,8 @@ import org.goldenport.value._
  *  version May. 21, 2019
  *  version Jul. 25, 2019
  *  version Aug.  3, 2019
- * @version Sep. 30, 2019
+ *  version Sep. 30, 2019
+ * @version Oct.  5, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -93,6 +94,7 @@ case class Parameters(
 
   def pop(count: Int): Parameters = copy(arguments = arguments.take(count))
 }
+
 object Parameters {
   def apply(p: SList): Parameters = apply(p.list)
 
@@ -198,13 +200,17 @@ object Parameters {
     }
 
     def schema(p: LispContext): (Cursor, ValidationNel[SError, Schema]) = {
-      val name = parameters.argument1[String](spec)
-      val n = s"model.voucher.$name"
-      val r = p.bindings.get(n).map {
+      val r = parameters.arguments(0) match {
+        case SString(name) =>
+          p.bindings.get(name).orElse(p.bindings.get(s"model.voucher.$name")).map {
+            case m: SSchema => Success(m.schema).toValidationNel
+            case m: Schema => Success(m).toValidationNel
+            case m => RAISE.notImplementedYetDefect
+          }.getOrElse(RAISE.notImplementedYetDefect)
         case m: SSchema => Success(m.schema).toValidationNel
         case m: Schema => Success(m).toValidationNel
-        case m => RAISE.notImplementedYetDefect
-      }.getOrElse(RAISE.notImplementedYetDefect)
+        case m => RAISE.notImplementedYetDefect(s"Parameters#schema: $m")
+      }
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }

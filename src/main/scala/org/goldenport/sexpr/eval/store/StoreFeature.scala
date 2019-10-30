@@ -12,7 +12,8 @@ import org.goldenport.sexpr._
  * @since   Mar. 30, 2019
  *  version Apr. 15, 2019
  *  version May.  9, 2019
- * @version Jul. 21, 2019
+ *  version Jul. 21, 2019
+ * @version Oct.  7, 2019
  * @author  ASAMI, Tomoharu
  */
 class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends Loggable {
@@ -25,9 +26,10 @@ class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends L
     collection.get(id).map(SRecord.apply).getOrElse(SError.notFound(s"Store[${collection.name}]", id.show))
   )
 
-  def query(collection: Collection, q: Query): SExpr = SExpr.run(
-    SList.create(collection.query(q).irecords.map(SRecord.apply))
-  )
+  def select(collection: Collection, q: Query): SExpr = SExpr.run {
+    val t = collection.select(q).toTable
+    STable(t)
+  }
 
   def insert(collection: Collection, rec: Record): SExpr = SExpr.run {
     val r = to_store_record(rec)
@@ -76,6 +78,21 @@ class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends L
 
   def drop(collection: Collection): SExpr = SExpr.run {
     collection.drop()
+    SBoolean.TRUE
+  }
+
+  def define(store: Option[Symbol], name: Symbol, schema: Schema): SExpr = SExpr.run {
+    factory.defineCollection(store, name, schema)
+    SBoolean.TRUE
+  }
+
+  def define(name: Symbol, schema: Schema): SExpr = SExpr.run {
+    factory.defineCollection(name, schema)
+    SBoolean.TRUE
+  }
+
+  def define(store: Symbol, name: Symbol, schema: Schema): SExpr = SExpr.run {
+    factory.defineCollection(store, name, schema)
     SBoolean.TRUE
   }
 }

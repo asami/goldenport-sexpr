@@ -14,7 +14,6 @@ import org.goldenport.record.unitofwork._
 import org.goldenport.record.unitofwork.UnitOfWork._
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.io.{MimeType, UrlUtils, Retry => LibRetry}
-import org.goldenport.sexpr._, SExprConverter._
 import org.goldenport.matrix.{IMatrix, Matrix}
 import org.goldenport.bag.{EmptyBag, ChunkBag, StringBag}
 import org.goldenport.xml.dom.DomUtils
@@ -22,6 +21,8 @@ import org.goldenport.log.Loggable
 import org.goldenport.cli.ShellCommand
 import org.goldenport.incident.{Incident => LibIncident}
 import org.goldenport.parser.InterpolationParser
+import org.goldenport.sexpr._, SExprConverter._
+import org.goldenport.sexpr.eval.LispFunction._
 
 /*
  * @since   Sep. 10, 2018
@@ -35,7 +36,8 @@ import org.goldenport.parser.InterpolationParser
  *  version Jun. 30, 2019
  *  version Jul. 28, 2019
  *  version Aug. 25, 2019
- * @version Sep. 30, 2019
+ *  version Sep. 30, 2019
+ * @version Oct. 11, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -332,8 +334,8 @@ trait IoFunction extends EffectFunction { // I/O bound
   ): Request = build_request(
     method,
     p.parameters,
-    p.bindings.getUrl("http.baseurl"),
-    p.bindings.getStringList("http.header")
+    p.bindings.getUrl(PROP_HTTP_BASEURL),
+    p.bindings.getStringList(PROP_HTTP_HEADER)
   )
 
   protected final def build_request(
@@ -351,7 +353,7 @@ trait IoFunction extends EffectFunction { // I/O bound
     } catch {
       case NonFatal(e) => baseurl.
           map(x => new URL(_normalize_baseurl(x), uri.toASCIIString)).
-          getOrElse(RAISE.invalidArgumentFault(s"Unresolved uri: $uri"))
+          getOrElse(RAISE.invalidArgumentFault(s"Unresolved uri: $uri. Set ${PROP_HTTP_BASEURL} to resolve relative URI."))
     }
     // println(s"build_request url: $baseurl")
     // println(s"build_request url: $url")
@@ -426,6 +428,9 @@ trait SyncIoFunction extends IoFunction { // I/O bound, synchronous is required.
 }
 
 object LispFunction {
+  val PROP_HTTP_BASEURL = "http.baseurl"
+  val PROP_HTTP_HEADER = "http.header"
+
   case object EvalOrInvoke extends ControlFunction {
     val specification = FunctionSpecification("eval-or-invoke", 1)
     def apply(p: LispContext) = {
@@ -528,10 +533,10 @@ object LispFunction {
     @annotation.tailrec
     private def _go(p: SExpr, ps: List[SExpr]): SExpr = ps match {
       case Nil => p
-      case x :: xs => _go(_plus(p, x), xs)
+      case x :: xs => _go(minus(p, x), xs)
     }
 
-    private def _plus(l: SExpr, r: SExpr): SExpr = (l, r) match {
+    private def minus(l: SExpr, r: SExpr): SExpr = (l, r) match {
       case (ml: SNumber, mr: SNumber) => ml - mr
       case (ml: SMatrix, mr: SMatrix) => ml - mr
       case _ => SError(s"Invalid number or matrix: $l, $r")
@@ -546,14 +551,34 @@ object LispFunction {
     @annotation.tailrec
     private def _go(p: SExpr, ps: List[SExpr]): SExpr = ps match {
       case Nil => p
-      case x :: xs => _go(_plus(p, x), xs)
+      case x :: xs => _go(_multify(p, x), xs)
     }
 
-    private def _plus(l: SExpr, r: SExpr): SExpr = (l, r) match {
+    private def _multify(l: SExpr, r: SExpr): SExpr = (l, r) match {
       case (ml: SNumber, mr: SNumber) => ml * mr
       case (ml: SNumber, mr: SMatrix) => ml * mr
       case (ml: SMatrix, mr: SNumber) => ml * mr
       case (ml: SMatrix, mr: SMatrix) => ml * mr
+      case _ => SError(s"Invalid number or matrix: $l, $r")
+    }
+  }
+
+  case object Divide extends EvalFunction {
+    val specification = FunctionSpecification("/", 2)
+
+    def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
+
+    @annotation.tailrec
+    private def _go(p: SExpr, ps: List[SExpr]): SExpr = ps match {
+      case Nil => p
+      case x :: xs => _go(_divide(p, x), xs)
+    }
+
+    private def _divide(l: SExpr, r: SExpr): SExpr = (l, r) match {
+      case (ml: SNumber, mr: SNumber) => ml / mr
+//      case (ml: SNumber, mr: SMatrix) => ml / mr
+//      case (ml: SMatrix, mr: SNumber) => ml / mr
+//      case (ml: SMatrix, mr: SMatrix) => ml / mr
       case _ => SError(s"Invalid number or matrix: $l, $r")
     }
   }

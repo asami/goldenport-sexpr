@@ -33,7 +33,7 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Jul. 14, 2019
  *  version Aug. 17, 2019
  *  version Sep. 30, 2019
- * @version Oct.  1, 2019
+ * @version Oct. 31, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
@@ -214,7 +214,9 @@ object LispContext {
     val scriptContext = ScriptEngineContext.default
     val sqlcontext = {
       if (true)
-        SqlContext.createSync(config.properties)
+        SqlContext.createEachTime(config.properties)
+      else if (false)
+        SqlContext.createAutoCommit(config.properties)
       else
         SqlContext.createConnectionPool(config.properties)
     }
