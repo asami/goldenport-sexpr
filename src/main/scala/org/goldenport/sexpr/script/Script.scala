@@ -21,7 +21,8 @@ import org.goldenport.sexpr._
  *  version Jul. 25, 2019
  *  version Aug. 31, 2019
  *  version Sep. 24, 2019
- * @version Oct. 31, 2019
+ *  version Oct. 31, 2019
+ * @version Nov. 16, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -227,7 +228,7 @@ object Script {
         case m: ScriptToken => add_Sexpr(config, SScript.create(m))
         case m: XmlToken => add_Sexpr(config, SXml(m.text))
         case m: JsonToken => add_Sexpr(config, SJson(m.text))
-        case m: BracketToken => add_Sexpr(config, SMatrix.create1d(m.prefix, m.text))
+        case m: BracketToken => add_Sexpr(config, _from_bracket(config, m))
         case m: DoubleBracketToken => add_Sexpr(config, SMatrix.create2d(m.prefix, m.text))
         case m: RawBracketToken => RAISE.unsupportedOperationFault(s"$m")
         case m: SingleQuoteToken => add_Sexpr(config, SSingleQuote()) // no reach
@@ -278,6 +279,15 @@ object Script {
     private def _json_to_record(p: String): JsonRecord = JsonRecord.create(p)
 
     private def _lxsv_to_record(p: String): Record = Record.fromLxsv(p)
+
+    private def _from_bracket(config: Config, p: BracketToken): SVector = {
+      val a = parse(config, p.text)
+      val b = a.expressions.flatMap {
+        case m: SList => m.vector
+        case m => Vector(m)
+      }
+      SVector(b)
+    }
 
     def addChildTransition(config: Config, ps: Vector[SExpr], t: LogicalToken): Transition = 
       add_Sexpr(config, ps).handle_event(config, t)

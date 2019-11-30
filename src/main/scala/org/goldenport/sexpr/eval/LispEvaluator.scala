@@ -6,6 +6,7 @@ import org.goldenport.log.LogMark, LogMark._
 import org.goldenport.i18n.I18NContext
 import org.goldenport.parser.CommandParser
 import org.goldenport.record.v3.Record
+import org.goldenport.record.query.QueryExpression
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.chart.ChartFunction
 import org.goldenport.sexpr.eval.sql.SqlFunction
@@ -31,15 +32,17 @@ import org.goldenport.sexpr.eval.sci.SciFunction
  *  version Jul. 28, 2019
  *  version Aug. 31, 2019
  *  version Sep. 30, 2019
- * @version Oct. 14, 2019
+ *  version Oct. 14, 2019
+ * @version Nov. 16, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     with JXPathPart[C] {
   def config: LispConfig
   def i18nContext: I18NContext
+  def queryContext: QueryExpression.Context
   protected def create_Eval_Context(): C = create_Eval_Context(SNil)
-  protected def create_Eval_Context(x: SExpr): C = LispContext(config, i18nContext, apply_context, x).asInstanceOf[C]
+  protected def create_Eval_Context(x: SExpr): C = LispContext(config, i18nContext, queryContext, apply_context, x).asInstanceOf[C]
   protected def create_Eval_Context(xs: List[SExpr]): C = create_Eval_Context(SList.create(xs))
   protected def reduction_Context(xs: Seq[C]): C = create_Eval_Context(xs.toList.map(_.value))
   protected def lift_Context(c: EvalContext): C = c.asInstanceOf[C]
@@ -68,7 +71,7 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     apply_lambda_option(ctx).orElse(
       get_function(lift_Context(ctx)).
         map(apply_function(ctx, _))
-    ).getOrElse(eval_context(ctx))
+    ).getOrElse(eval_value_context(ctx))
   }
 
   protected def syntax_expansion(p: LispContext): LispContext = {
@@ -178,24 +181,24 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
 
   private def _is_lazy(p: SExpr) = p.getList.exists(_.isInstanceOf[SControl])
 
-  protected def eval_context(c: LispContext): LispContext =
+  protected def eval_value_context(c: LispContext): LispContext =
     c.value match {
       case m: SScript => eval_script_to_context(m)
       case m: SExpression => eval_expression_to_context(m)
-      case m => _eval_context(c)
+      case m => _eval_value_context(c)
     }
 
-  private def _eval_context(c: LispContext): LispContext = {
+  private def _eval_value_context(c: LispContext): LispContext = {
     // println(s"_eval_context: ${c.value}")
     val r: SExpr = c.value match {
       case m: SAtom => eval_Atom(m).
           orElse(c.getBindedValue(m.name)).
           orElse(get_binded_value(m)).
           getOrElse(SError.bindingNotFound(m.name))
-      case m @ SCell(car, _) if car.isInstanceOf[SCell] => SError.Unevaluatable(m)
+      // case m @ SCell(car, _) if car.isInstanceOf[SCell] => SError.Unevaluatable(m)
       // case m: SCell => eval(m)
       // case m => m
-      case m => eval(m)
+      case m => m
     }
     c.toResult(r)
   }
@@ -231,9 +234,14 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     c.format(rule, p)
 }
 object LispEvaluator {
-  def apply(p: LispConfig, i18ncontext: I18NContext): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
+  def apply(
+    p: LispConfig,
+    i18ncontext: I18NContext,
+    querycontext: QueryExpression.Context
+  ): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
     val config = p
     val i18nContext = i18ncontext
+    val queryContext = querycontext
     init_binding(LispBinding())
   }
 }

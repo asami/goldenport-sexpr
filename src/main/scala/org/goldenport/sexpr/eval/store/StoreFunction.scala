@@ -14,7 +14,8 @@ import org.goldenport.sexpr.eval._
  *  version Apr. 14, 2019
  *  version Jul. 14, 2019
  *  version Aug.  2, 2019
- * @version Oct.  5, 2019
+ *  version Oct.  5, 2019
+ * @version Nov. 27, 2019
  * @author  ASAMI, Tomoharu
  */
 object StoreFunction {
@@ -93,7 +94,7 @@ object StoreFunction {
   }
 
   case object StoreDelete extends SyncIoFunction { // TODO IoFunction and synchronize in the connection context.
-    val specification = FunctionSpecification("store-delete", 1)
+    val specification = FunctionSpecification("store-delete", 2)
 
     def apply(p: LispContext): LispContext = {
       val a = for {
@@ -110,6 +111,22 @@ object StoreFunction {
   }
 
   case object StoreCreate extends SyncIoFunction {
+    val specification = FunctionSpecification("store-create", 1)
+
+    def apply(p: LispContext): LispContext = {
+      val a = for {
+        collection <- p.param.storeCollection
+      } yield {
+        collection.map(p.feature.store.create(_)).valueOr(SError(_))
+      }
+      val r = a.run(p.param.cursor(specification))
+      p.toResult(r._2)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
+  case object StoreCreateOld extends SyncIoFunction {
     val specification = FunctionSpecification("store-create", 2)
 
     def apply(p: LispContext): LispContext = {
@@ -132,7 +149,6 @@ object StoreFunction {
     def apply(p: LispContext): LispContext = {
       val a = for {
         collection <- p.param.storeCollection
-        id <- p.param.idForStore
       } yield {
         collection.map(p.feature.store.drop(_)).valueOr(SError(_))
       }

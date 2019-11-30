@@ -15,10 +15,14 @@ import org.goldenport.sexpr._
 /*
  * @since   Apr. 20, 2019
  *  version Apr. 20, 2019
- * @version Aug.  2, 2019
+ *  version Aug.  2, 2019
+ * @version Nov. 15, 2019
  * @author  ASAMI, Tomoharu
  */
-case class QueryFactory(config: RichConfig) {
+case class QueryFactory(
+  config: RichConfig,
+  context: QueryExpression.Context
+) {
   def unmarshall(p: String): Query = unmarshallValidation(p).valueOr(e => throw e.head)
 
   def unmarshallValidation(p: String): ValidationNel[Throwable, Query] = try {
@@ -29,13 +33,13 @@ case class QueryFactory(config: RichConfig) {
     else if (p.startsWith("<"))
       unmarshallValidation(DomParser.parse(p))
     else
-      Failure(SyntaxErrorFaultException(s"Illegal query: $p")).toValidationNel
-
+      Success(Query.create(p)(context))
+      // Failure(SyntaxErrorFaultException(s"Illegal query: $p")).toValidationNel
   } catch {
     case NonFatal(e) => Failure(e).toValidationNel
   }
 
-  def unmarshall(p: SExpr): Query = QueryFactory.SExprQueryParser.parse(p)
+  def unmarshall(p: SExpr): Query = QueryFactory.SExprQueryParser.parse(p)(context)
 
   def unmarshallValidation(p: JsValue): ValidationNel[Throwable, Query] = try {
     Success(unmarshall(p)).toValidationNel
@@ -46,7 +50,7 @@ case class QueryFactory(config: RichConfig) {
   def unmarshall(p: JsValue): Query = RAISE.notImplementedYetDefect
 
   def unmarshallValidation(p: SExpr): ValidationNel[Throwable, Query] = try {
-    Success(QueryFactory.SExprQueryParser.parse(p))
+    Success(QueryFactory.SExprQueryParser.parse(p)(context))
   } catch {
     case NonFatal(e) => Failure(e).toValidationNel
   }
@@ -56,20 +60,27 @@ case class QueryFactory(config: RichConfig) {
 }
 
 object QueryFactory {
-  val default = QueryFactory(RichConfig.empty)
+  def default(implicit context: QueryExpression.Context) = QueryFactory(RichConfig.empty, context)
 
-  def unmarshall(p: String): Query = default.unmarshall(p)
-  def unmarshall(p: SExpr): Query = default.unmarshall(p)
-  def unmarshall(p: SJson): Query = default.unmarshall(p)
-  def unmarshall(p: SXml): Query = default.unmarshall(p)
+  def unmarshall(p: String)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
+  def unmarshall(p: SExpr)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
+  def unmarshall(p: SJson)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
+  def unmarshall(p: SXml)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
 
   object SExprQueryParser extends SExprParsers {
     import org.goldenport.record.v2.{Column, DataType, Multiplicity}
     import org.goldenport.record.sql.SqlDatatype
 
-    def parse(s: String): Query = parse(SExprParserNew(s))
+    def parse(s: String)(implicit context: QueryExpression.Context): Query = parse(SExprParserNew(s))
 
-    def parse(expr: SExpr): Query = {
+    def parse(expr: SExpr)(implicit context: QueryExpression.Context): Query = expr match {
+      case SNil => Query.all
+      case m: SRecord => Query.create(m.record.toRecord)
+      case m: SString => Query.create(m.string)
+      case m => _parse(m)
+    }
+
+    private def _parse(expr: SExpr): Query = {
       val reader = SExprReader.create(expr)
       rule(reader) match {
         case Success(result, _) => result

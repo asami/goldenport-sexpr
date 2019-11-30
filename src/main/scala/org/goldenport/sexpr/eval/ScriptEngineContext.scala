@@ -9,7 +9,8 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Sep.  1, 2019
- * @version Sep. 29, 2019
+ *  version Sep. 29, 2019
+ * @version Nov. 28, 2019
  * @author  ASAMI, Tomoharu
  */
 case class ScriptEngineContext(
@@ -45,13 +46,14 @@ case class ScriptEngineContext(
       x
     }
 
+  // See ScriptEnginePart#_eval_bean
   private def _value(p: Any): Any = p match {
     case m: SBoolean => m.value
     case m: SNumber => m.asBigDecimal
     case m: SString => m.asString
-    case m: SMatrix => m.matrix
-    case m: SRecord => m.record
-    case m: STable => m.table
+    case m: SMatrix => m
+    case m: SRecord => m
+    case m: STable => m
     case m: SExpr => m.asObject
     case m => m
   }

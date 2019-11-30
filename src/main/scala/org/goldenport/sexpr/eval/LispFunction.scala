@@ -1,6 +1,7 @@
 package org.goldenport.sexpr.eval
 
 import scalaz._, Scalaz._
+import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration._
@@ -37,7 +38,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Jul. 28, 2019
  *  version Aug. 25, 2019
  *  version Sep. 30, 2019
- * @version Oct. 11, 2019
+ *  version Oct. 11, 2019
+ * @version Nov. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -520,8 +522,9 @@ object LispFunction {
 
     private def _plus(l: SExpr, r: SExpr): SExpr = (l, r) match {
       case (ml: SNumber, mr: SNumber) => ml + mr
+      case (ml: SVector, mr: SVector) => ml + mr
       case (ml: SMatrix, mr: SMatrix) => ml + mr
-      case _ => SError(s"Invalid number or matrix: $l, $r")
+      case _ => SError(s"Invalid number or vector or matrix: $l, $r")
     }
   }
 
@@ -538,8 +541,9 @@ object LispFunction {
 
     private def minus(l: SExpr, r: SExpr): SExpr = (l, r) match {
       case (ml: SNumber, mr: SNumber) => ml - mr
+      case (ml: SVector, mr: SVector) => ml - mr
       case (ml: SMatrix, mr: SMatrix) => ml - mr
-      case _ => SError(s"Invalid number or matrix: $l, $r")
+      case _ => SError(s"Invalid number or vector or matrix: $l, $r")
     }
   }
 
@@ -558,8 +562,9 @@ object LispFunction {
       case (ml: SNumber, mr: SNumber) => ml * mr
       case (ml: SNumber, mr: SMatrix) => ml * mr
       case (ml: SMatrix, mr: SNumber) => ml * mr
+      case (ml: SMatrix, mr: SVector) => ml * mr
       case (ml: SMatrix, mr: SMatrix) => ml * mr
-      case _ => SError(s"Invalid number or matrix: $l, $r")
+      case _ => SError(s"Invalid number or vecror or matrix: $l, $r")
     }
   }
 
@@ -579,7 +584,7 @@ object LispFunction {
 //      case (ml: SNumber, mr: SMatrix) => ml / mr
 //      case (ml: SMatrix, mr: SNumber) => ml / mr
 //      case (ml: SMatrix, mr: SMatrix) => ml / mr
-      case _ => SError(s"Invalid number or matrix: $l, $r")
+      case _ => SError(s"Invalid number or vector or matrix: $l, $r")
     }
   }
 
@@ -707,6 +712,7 @@ object LispFunction {
     import javax.xml.xpath._
     import org.apache.commons.jxpath._
     import org.goldenport.record.v2._
+    import org.goldenport.record.v3.jxpath.RecordJxPathContext
 
     val specification = FunctionSpecification("path-get", 2)
 
@@ -716,7 +722,7 @@ object LispFunction {
       auto: Boolean = false
     )
     object ReturnType {
-      val autoType = ReturnType(XXml, XPathConstants.NODE, true) // TODO XAny
+      val autoType = ReturnType(XXml, XPathConstants.NODESET, true)
       val booleanType = ReturnType(XBoolean, XPathConstants.BOOLEAN)
       val numberType = ReturnType(XDecimal, XPathConstants.NUMBER)
       val stringType = ReturnType(XString, XPathConstants.STRING)
@@ -771,7 +777,8 @@ object LispFunction {
         case m: SHtml => _traverse_html(rtype, xpath, m)
         case m: SJson => _traverse_json(rtype, xpath, m)
         case m: SRecord => _traverse_record(rtype, xpath, m)
-        case m => SError.syntaxError(s"Unaviable for xpath: $m")
+        case m: STable => _traverse_table(rtype, xpath, m)
+        case m => _traverse_bean(rtype, xpath, m) // SError.syntaxError(s"Unaviable for xpath: $m")
       }
     } catch {
       case NonFatal(e) => SError(e)
@@ -800,6 +807,14 @@ object LispFunction {
             case m: org.w3c.dom.Element =>
               if (DomUtils.children(m).forall(_.isInstanceOf[org.w3c.dom.Text]))
                 m.getTextContent
+              else
+                m
+            case m: org.w3c.dom.NodeList =>
+              val xs = for (i <- 0 until m.getLength) yield m.item(i)
+              if (DomUtils.isTextOnly(xs))
+                xs.map(_.getTextContent).mkString
+              else if (xs.forall(DomUtils.isTextOnlyChildren))
+                xs.map(_.getTextContent)
               else
                 m
             case _ => a
@@ -847,12 +862,22 @@ object LispFunction {
     }
 
     private def _traverse_record(rtype: ReturnType, xpath: SXPath, p: SRecord) = {
-      val pc = JXPathContext.newContext(p.record)
+      val pc = RecordJxPathContext.newContext(p.record)
+      _traverse(rtype, xpath, pc)
+    }
+
+    private def _traverse_table(rtype: ReturnType, xpath: SXPath, p: STable) = {
+      val pc = JXPathContext.newContext(p.table)
+      _traverse(rtype, xpath, pc)
+    }
+
+    private def _traverse_bean(rtype: ReturnType, xpath: SXPath, p: SExpr) = {
+      val pc = JXPathContext.newContext(p.asObject)
       _traverse(rtype, xpath, pc)
     }
 
     private def _traverse(rtype: ReturnType, xpath: SXPath, pc: JXPathContext): SExpr = {
-      val v0 = rtype.xpath match {
+      def v0 = rtype.xpath match {
         case XPathConstants.BOOLEAN => pc.getValue(xpath.path, classOf[Boolean])
         case XPathConstants.NUMBER => pc.getValue(xpath.path, classOf[BigDecimal])
         case XPathConstants.STRING => rtype.datatype.toInstance(pc.getValue(xpath.path, classOf[String]))
@@ -861,17 +886,16 @@ object LispFunction {
       }
 
       val v = if (rtype.auto) {
-        pc.getValue(xpath.path) match {
-          case m: JsValue => m
-          case m => rtype.datatype.toInstance(pc.getValue(xpath.path, classOf[String]))
+        pc.iterate(xpath.path).asScala.toList match {
+          case Nil => SNil
+          case x :: Nil => x
+          case xs => xs
         }
       } else {
         v0
       }
       SExpr.create(v)
     }
-
-    //   _traverse_jxpath_value(xpath.path, pc)
 
     // private def _traverse_jxpath_value(xpath: String, pc: JXPathContext): SExpr = {
     //   // println(s"xpath: $xpath")

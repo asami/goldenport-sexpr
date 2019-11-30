@@ -14,7 +14,8 @@ import org.goldenport.matrix.IMatrix
  *  version Mar.  2, 2019
  *  version Apr. 20, 2019
  *  version May.  8, 2019
- * @version Aug.  3, 2019
+ *  version Aug.  3, 2019
+ * @version Nov.  8, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExprConverter[T] extends Function1[SExpr, T]
@@ -76,19 +77,18 @@ object SExprConverter {
     }
   }
 
-  implicit case object toQueryConverter extends SExprConverter[Query] {
-    import org.goldenport.sexpr.eval.QueryFactory
-    def apply(p: SExpr): Query = p match {
-      case SQuery(s) => s
-      case SString(s) => QueryFactory.unmarshall(s)
-      case m: SJson => QueryFactory.unmarshall(m.text)
-      case m: SXml => QueryFactory.unmarshall(m.text)
-      case m: SHtml => QueryFactory.unmarshall(m.text)
-      case m: SCell => QueryFactory.unmarshall(m)
-      case SNil => Query.all
-      case m => RAISE.invalidArgumentFault(s"Not query: $m")
-    }
-  }
+  // implicit case object toQueryConverter extends SExprConverter[Query] {
+  //   import org.goldenport.sexpr.eval.QueryFactory
+  //   def apply(p: SExpr): Query = p match {
+  //     case SQuery(s) => s
+  //     case SString(s) => QueryFactory.unmarshall(s)
+  //     case m: SJson => QueryFactory.unmarshall(m.text)
+  //     case m: SXml => QueryFactory.unmarshall(m.text)
+  //     case m: SHtml => QueryFactory.unmarshall(m.text)
+  //     case m: SExpr => QueryFactory.unmarshall(m)
+  //     case m => RAISE.invalidArgumentFault(s"Not query: $m")
+  //   }
+  // }
 
   implicit case object toRecordConverter extends SExprConverter[Record] {
     import org.goldenport.sexpr.eval.RecordFactory

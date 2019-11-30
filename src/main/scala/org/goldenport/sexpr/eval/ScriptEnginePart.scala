@@ -12,10 +12,13 @@ import org.goldenport.sexpr._
 /*
  * @since   Sep. 18, 2018
  *  version Aug. 31, 2019
- * @version Sep. 29, 2019
+ *  version Sep. 29, 2019
+ * @version Nov. 29, 2019
  * @author  ASAMI, Tomoharu
  */
 trait ScriptEnginePart { self: LispContext =>
+  import ScriptEnginePart._
+
   // https://qiita.com/takaki@github/items/156818da334d53a47d92
   object script {
     def eval(p: SScript): LispContext = {
@@ -64,12 +67,17 @@ trait ScriptEnginePart { self: LispContext =>
     new AccessControlContext(Array[ProtectionDomain](domain))
   }
 
-  private def _eval_simple_expression_option(p: SExpression): Option[LispContext] =
-    Strings.totokens(p.expression, ".") match {
+  private def _eval_simple_expression_option(p: SExpression): Option[LispContext] = {
+    val s = if (p.expression.startsWith("."))
+      "?" :: Strings.totokens(p.expression, ".")
+    else
+      Strings.totokens(p.expression, ".")
+    s match {
       case Nil => None
       case x :: Nil => None
       case xs => _eval_simple_expression_option(xs)
     }
+  }
 
   private def _eval_simple_expression_option(ps: List[String]): Option[LispContext] =
     if (_is_simple_expression(ps))
@@ -82,7 +90,22 @@ trait ScriptEnginePart { self: LispContext =>
       case Nil => Nil
       case xs => xs.init :+ xs.last.span(_ != '%')._1
     }
-    xs.forall(StringUtils.isScriptIdentifier)
+    xs match {
+      case Nil => false
+      case x :: xs => _is_first_component(x) && xs.forall(StringUtils.isScriptIdentifier)
+    }
+  }
+
+  private def _is_first_component(p: String) = p match {
+    case "#" => true
+    case "?" => true
+    case "!" => true
+    case _ =>
+      StringUtils.getMarkInt(p).collect {
+        case ("#", _) => true
+        case ("?", _) => true
+        case ("!", _) => true
+      }.getOrElse(false) || StringUtils.isScriptIdentifier(p)
   }
 
   private def _eval_simple_expression(ps: List[String]): Option[LispContext] = ps match {
@@ -113,7 +136,19 @@ trait ScriptEnginePart { self: LispContext =>
       case Nil => None
       case xs => 
         val key = xs.mkString(".")
-        bindings.get(key).flatMap {
+        val v = key match {
+          case "#" => Some(takeHistory)
+          case "?" => Some(peek)
+          case "!" => Some(takeCommandHistory)
+          case _ => StringUtils.getMarkInt(key).collect {
+            case ("#", i) => takeHistory(i)
+            case ("?", i) => peek(i)
+            case ("!", i) => takeCommandHistory(i)
+          }.orElse(
+            bindings.get(key)
+          )
+        }
+        v.flatMap {
           case m: AnyRef => _eval_bean(m, path)
           case _ => None
         }.orElse(_eval_simple_expression(property.init, property.last :: path))
@@ -125,13 +160,19 @@ trait ScriptEnginePart { self: LispContext =>
         case Nil => RAISE.noReachDefect
         case x :: Nil =>
           val (propertyname, format) = _parse_format(x)
-          BeanUtils.getProperty(x, propertyname).
+          _get_property(m, propertyname).
             map(v => toResult(_format(format, SExpr.create(v))))
-        case x :: xs => BeanUtils.getProperty(m, x).
-            flatMap(v => _eval_bean(v, xs))
+        case x :: xs => _get_property(m, x).flatMap(v => _eval_bean(v, xs))
       }
       case _ => None
     }
+
+  private def _get_property(o: AnyRef, propertyname: String): Option[Any] = o match {
+    case m: SRecord => m.record.get(propertyname)
+    // See ScriptEngineContext#_value
+    case m: SExpr => BeanUtils.getProperty(m, propertyname) // orElse _get_property(mm.asJavaObject, propertyname, format)
+    case m => BeanUtils.getProperty(m, propertyname)
+  }
 
   private def _eval_format(name: String, script: String): LispContext = {
     val (s, format) = _parse_format(script)
@@ -153,4 +194,5 @@ trait ScriptEnginePart { self: LispContext =>
 }
 
 object ScriptEnginePart {
+//  val firstComponentRegex = """^[#?!]\d+[.]*""".r
 }

@@ -57,7 +57,8 @@ import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncid
  *  version Jul. 29, 2019
  *  version Aug. 25, 2019
  *  version Sep. 29, 2019
- * @version Oct. 31, 2019
+ *  version Oct. 31, 2019
+ * @version Nov. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -139,7 +140,7 @@ sealed trait SExpr {
       val a = SExpr.toShow(s)
       if (titleDescription.nonEmpty)
         s"${longTitle}\n${a}"
-      else if (a.contains('\n') || a.contains('\t'))
+      else if (a.contains('\n') || a.contains('\r'))
         s"${longTitle}\n${a}"
       else
         s"${longTitle} ${a}"
@@ -168,6 +169,8 @@ sealed trait SExpr {
    * Show full description of the data.
    */
   def fullDescription: SExpr.Description = _full_description
+
+  def embed: String = display
 
   // def detail: Vector[String] = detailTitle +: detailContent
   // def detailName: String = 
@@ -616,6 +619,8 @@ case class SRecord(record: IRecord) extends SExpr {
   override protected def print_String = record.print
   override def titleInfo = s"${record.length}"
   override protected def show_Content = Some(record.show)
+
+  def get(propertyname: String): SExpr = SExpr.create(record.get(propertyname))
 }
 object SRecord {
   def create(p: Lxsv): SRecord = SRecord(Record.create(p))
@@ -632,6 +637,30 @@ case class STable(table: ITable) extends SExpr {
   override protected def show_Content: Option[String] = Some(table.show)
   def width = table.width
   def height = table.height
+  def isEmpty = table.height == 0
+  def head: SExpr = _table.headOption.map(SRecord(_)).getOrElse(SNil)
+  def tail: STable = STable(_table.tail)
+  def list: SList = SList.create(_vector)
+  def vector: SVector = SVector(_vector)
+  def row(i: Int): SExpr = _table.getRow(i).map(SRecord(_)).getOrElse(SNil)
+  def column(i: Int): SVector = RAISE.notImplementedYetDefect
+
+  private lazy val _table = table.toTable
+  private lazy val _vector = table.toRecordVector.map(SRecord(_))
+}
+
+case class SVector(vector: Vector[SExpr]) extends SExpr {
+  override def asObject: Any = vector
+  override val titleInfo = s"${vector.length}"
+  override protected def print_String = vector.map(_.print).mkString("[", " ", "]")
+  override protected def display_String = vector.map(_.embed).mkString("[", " ", "]")
+  override protected def show_Content: Option[String] = Some(display)
+  def length = vector.length
+  def +(rhs: SVector): SVector = RAISE.notImplementedYetDefect
+  def -(rhs: SVector): SVector = RAISE.notImplementedYetDefect
+}
+object SVector {
+  def create(ps: Seq[SExpr]): SVector = SVector(ps.toVector)
 }
 
 case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
@@ -650,7 +679,16 @@ case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
   def +(rhs: SMatrix): SMatrix = SMatrix(matrix + rhs.matrix)
   def -(rhs: SMatrix): SMatrix = SMatrix(matrix - rhs.matrix)
   def *(rhs: SMatrix): SMatrix = SMatrix(matrix * rhs.matrix)
+  def *(rhs: SVector): SMatrix = SMatrix(_multify(rhs.vector))
+  def *(rhs: SList): SMatrix = SMatrix(_multify(rhs.vector))
   def *(rhs: SNumber): SMatrix = SMatrix(matrix * rhs.asDouble)
+
+  private def _multify(ps: Vector[SExpr]) = {
+    if (matrix.width != ps.length)
+      RAISE.invalidArgumentFault(s"Vector length(${ps.length}) is not equals matrix width(${matrix.width}).")
+    val xs = ps.map(_.asDouble)
+    matrix * xs
+  }
 }
 object SMatrix {
   import org.goldenport.matrix._
@@ -661,6 +699,8 @@ object SMatrix {
 
   private val _parser_1d = CommandParser.create(CMD_TRANSPORSE, CMD_HORIZONTAL, CMD_VERTICAL)
   private val _parser_2d = CommandParser.create(CMD_TRANSPORSE)
+
+  def create(prefix: Option[String], p: String): SMatrix = create2d(prefix, p)
 
   def create2d(prefix: Option[String], p: String): SMatrix =
     prefix.map(_matrix_2d(_, p)).getOrElse(_matrix_2d(p))
@@ -839,6 +879,15 @@ case class DomSXml(dom: org.w3c.dom.Node) extends SXml {
   override val titleName = "XML(DOM)"
   override def toString(): String = text
   lazy val text: String = DomUtils.toText(dom)
+  override def getString = Some(text)
+  override protected def print_String = text
+  // def show = s"Xml(${cut_string(text)})"
+}
+case class NodeListSXml(nodelist: org.w3c.dom.NodeList) extends SXml {
+  override val titleName = "XML(NodeList)"
+  override def toString(): String = text
+  lazy val dom = RAISE.notImplementedYetDefect
+  lazy val text: String = DomUtils.distillText(nodelist)
   override def getString = Some(text)
   override protected def print_String = text
   // def show = s"Xml(${cut_string(text)})"
@@ -1307,6 +1356,8 @@ object SExpr {
   def create(p: Any): SExpr = p match {
     case null => SNil // result of ScriptEngine
     case m: SExpr => m
+    case m: Array[_] => _create_seq(m)
+    case m: Seq[_] => _create_seq(m)
     case m: Boolean => SBoolean.create(m)
     case m: Byte => SNumber(m)
     case m: Short => SNumber(m)
@@ -1346,6 +1397,14 @@ object SExpr {
     case m => SBean(AnyRefUtils.toAnyRef(m))
   }
 
+  private def _create_seq(p: Seq[Any]): SExpr =
+    if (p.forall(_.isInstanceOf[JsValue]))
+      SJson(JsArray(p.map(_.asInstanceOf[JsValue]).toVector))
+    else if (p.length > 100)
+      SVector.create(p.map(create))
+    else
+      SList.create(p.map(create))
+
   def create(s: Option[CreateStrategy], p: Any): SExpr =
     s.map(create(_, p)).getOrElse(create(p))
 
@@ -1361,10 +1420,10 @@ object SExpr {
     case BinaryCreate => RAISE.notImplementedYetDefect
   }
 
-  def createAuto(p: String): SExpr = p.headOption.flatMap {
+  def createAuto(p: String): SExpr = p.headOption.collect {
     case '<' => createXmlFamilyOption(p)
     case '{' => SJson.createOption(p)
-  }.getOrElse(create(p))
+  }.flatten.getOrElse(create(p))
 
   def createAuto(p: SUrl): SExpr = create(p) // Should be resolved in LispContext.
   def createAuto(p: SUrn): SExpr = create(p) // Should be resolved in LispContext.
@@ -1432,7 +1491,7 @@ object SExpr {
   def toPrint(s: String): String = s
 
   def toDisplay(s: String): String = {
-    val a = escapeNewlines(Strings.cutstring(s, 480))
+    val a = escapeDisplay(Strings.cutstring(s, 480))
     StringUtils.dropRightNewlines(a)
   }
 
@@ -1468,7 +1527,14 @@ object SExpr {
 
   def toFull(s: String): Vector[String] = Strings.tolines(s)
 
-  def escapeNewlines(s: String): String = 
+  def escapeDisplay(s: String): String =
+    if (s.contains('\n') | s.contains('\r')) {
+      s.replace("\n", "[NL]").replace("\r", "[CR]")
+    } else {
+      s
+    }
+
+  private def escapeNewlines(s: String): String =
     if (s.contains('\n') | s.contains('\r') | s.contains('\t')) {
       s.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
     } else {

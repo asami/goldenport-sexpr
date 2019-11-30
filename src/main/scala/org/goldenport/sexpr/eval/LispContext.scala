@@ -11,6 +11,7 @@ import org.goldenport.log.LogContext
 import org.goldenport.i18n.I18NContext
 import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.v3.sql.SqlContext
+import org.goldenport.record.query.QueryExpression
 import org.goldenport.record.unitofwork.interpreter.{UnitOfWorkLogic, StoreOperationLogic}
 import org.goldenport.record.http.Response
 import org.goldenport.log.LogMark._
@@ -33,7 +34,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Jul. 14, 2019
  *  version Aug. 17, 2019
  *  version Sep. 30, 2019
- * @version Oct. 31, 2019
+ *  version Oct. 31, 2019
+ * @version Nov.  8, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
@@ -208,17 +210,18 @@ object LispContext {
   def apply(
     config: LispConfig,
     i18ncontext: I18NContext,
+    querycontext: QueryExpression.Context,
     evaluator: LispContext => LispContext, // apply_context
     x: SExpr
   ): LispContext = {
     val scriptContext = ScriptEngineContext.default
     val sqlcontext = {
       if (true)
-        SqlContext.createEachTime(config.properties)
+        SqlContext.createEachTime(config.properties, querycontext)
       else if (false)
-        SqlContext.createAutoCommit(config.properties)
+        SqlContext.createAutoCommit(config.properties, querycontext)
       else
-        SqlContext.createConnectionPool(config.properties)
+        SqlContext.createConnectionPool(config.properties, querycontext)
     }
     val resourceManager = new ResourceManager()
     val featurecontext = FeatureContext(

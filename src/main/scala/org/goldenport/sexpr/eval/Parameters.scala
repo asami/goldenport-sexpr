@@ -7,6 +7,7 @@ import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{IRecord, Record, RecordSequence}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
+import org.goldenport.record.query.QueryExpression
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.SExprConverter._
@@ -21,7 +22,8 @@ import org.goldenport.value._
  *  version Jul. 25, 2019
  *  version Aug.  3, 2019
  *  version Sep. 30, 2019
- * @version Oct.  5, 2019
+ *  version Oct.  5, 2019
+ * @version Nov.  8, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -215,14 +217,22 @@ object Parameters {
       to_result_pop(nextspec, r)
     }
 
-    def query: (Cursor, ValidationNel[SError, Query]) = {
-      val query = parameters.argument1[Query](spec)
+    def query(implicit context: QueryExpression.Context): (Cursor, ValidationNel[SError, Query]) = {
+      val query = parameters.arguments(0) match {
+        case SQuery(s) => s
+        case SString(s) => QueryFactory.unmarshall(s)
+        case m: SJson => QueryFactory.unmarshall(m.text)
+        case m: SXml => QueryFactory.unmarshall(m.text)
+        case m: SHtml => QueryFactory.unmarshall(m.text)
+        case m: SExpr => QueryFactory.unmarshall(m)
+        case m => RAISE.invalidArgumentFault(s"Not query: $m")
+      }
       val r = Success(query).toValidationNel
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
 
-    def queryDefault: (Cursor, ValidationNel[SError, Query]) =
+    def queryDefault(implicit context: QueryExpression.Context): (Cursor, ValidationNel[SError, Query]) =
       if (parameters.isEmptyArguments) {
         val r = Success(Query.all).toValidationNel
         val nextspec = spec // TODO

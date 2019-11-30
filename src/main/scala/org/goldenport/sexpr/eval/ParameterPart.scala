@@ -7,6 +7,7 @@ import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{Record, RecordSequence}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
+import org.goldenport.record.query.QueryExpression
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.sexpr._
 import org.goldenport.value._
@@ -18,10 +19,13 @@ import Parameters.Cursor
  *  version May. 14, 2019
  *  version Jul. 14, 2019
  *  version Aug.  3, 2019
- * @version Sep. 30, 2019
+ *  version Sep. 30, 2019
+ * @version Nov.  9, 2019
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
+  implicit private val _query_context: QueryExpression.Context = sqlContext.queryContext
+
   object param {
     def cursor(spec: FunctionSpecification) = Cursor(feature, spec, parameters)
 

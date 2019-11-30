@@ -13,7 +13,8 @@ import org.goldenport.sexpr._
  *  version Apr. 15, 2019
  *  version May.  9, 2019
  *  version Jul. 21, 2019
- * @version Oct.  7, 2019
+ *  version Oct.  7, 2019
+ * @version Nov. 27, 2019
  * @author  ASAMI, Tomoharu
  */
 class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends Loggable {
@@ -58,6 +59,11 @@ class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends L
 
   def delete(collection: Collection, id: Id): SExpr = SExpr.run {
     collection.delete(id)
+    SBoolean.TRUE
+  }
+
+  def create(collection: Collection): SExpr = SExpr.run {
+    collection.create
     SBoolean.TRUE
   }
 
