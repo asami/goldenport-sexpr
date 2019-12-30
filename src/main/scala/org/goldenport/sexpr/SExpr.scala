@@ -58,7 +58,8 @@ import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncid
  *  version Aug. 25, 2019
  *  version Sep. 29, 2019
  *  version Oct. 31, 2019
- * @version Nov. 30, 2019
+table *  version Nov. 30, 2019
+table * @version Dec. 30, 2019
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -482,8 +483,13 @@ object SError {
     SError(Some(label), None, None, None)
   }
 
-  def Unevaluatable(p: SExpr): SError = {
+  def unevaluatable(p: SExpr): SError = {
     val label = s"Unevaluatable expression: $p"
+    SError(Some(label), None, None, None)
+  }
+
+  def unavailableParameter(p: SExpr): SError = {
+    val label = s"Unevaluatable parameter: $p"
     SError(Some(label), None, None, None)
   }
 
@@ -602,8 +608,11 @@ case class SVoucher(voucher: IVoucher) extends SExpr {
 case class SSchema(schema: Schema) extends SExpr {
   override protected def print_String = title
   override def titleInfo = s"${schema.columns.length}"
-  override def titleDescription = schema.columns.map(_.show).mkString(";")
+//  override def titleDescription = schema.columns.map(_.show).mkString(";")
   override def descriptionContent = schema.columns.map(_.showlong)
+
+  override protected def display_String = s"""$title ${schema.columns.map(_.show).mkString("\t")}"""
+  override protected def show_Content: Option[String] = Some(schema.show)
 }
 
 case class SQuery(query: Query) extends SExpr {
@@ -638,6 +647,7 @@ case class STable(table: ITable) extends SExpr {
   def width = table.width
   def height = table.height
   def isEmpty = table.height == 0
+  lazy val schema: SExpr = SSchema(table.schema)
   def head: SExpr = _table.headOption.map(SRecord(_)).getOrElse(SNil)
   def tail: STable = STable(_table.tail)
   def list: SList = SList.create(_vector)

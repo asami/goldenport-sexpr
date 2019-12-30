@@ -23,7 +23,8 @@ import org.goldenport.value._
  *  version Aug.  3, 2019
  *  version Sep. 30, 2019
  *  version Oct.  5, 2019
- * @version Nov.  8, 2019
+ *  version Nov.  8, 2019
+ * @version Dec.  7, 2019
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -254,14 +255,17 @@ object Parameters {
 
         def +(rhs: SExpr) = rhs match {
           case m: SRecord => copy(rs :+ m.record, count + 1)
+          case m: STable => _vector(m.vector.vector)
           case m: SCell => _list(m)
+          case m: SVector => _vector(m.vector)
           case m => _done
         }
 
         private def _done = copy(donep = true)
 
-        private def _list(p: SCell) = {
-          val xs = p.vector
+        private def _list(p: SCell) = _vector(p.vector)
+
+        private def _vector(xs: Seq[_]) = {
           if (xs.forall(_.isInstanceOf[SRecord]))
             copy(rs ++ xs.collect { case m: SRecord => m.record }, count + 1)
           else

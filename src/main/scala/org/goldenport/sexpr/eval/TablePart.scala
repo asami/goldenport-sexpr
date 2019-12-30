@@ -7,9 +7,10 @@ import org.goldenport.record.v2.{Schema, Column}
 import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.record.v3.{ITable, Table, Record}
 import org.goldenport.values.NumberRange
-import org.goldenport.sexpr._
+import org.goldenport.xsv._
 // import org.goldenport.sexpr.eval.chart.Chart
 import org.goldenport.util.StringUtils
+import org.goldenport.sexpr._
 
 /*
  * @since   Feb.  9, 2019
@@ -18,7 +19,8 @@ import org.goldenport.util.StringUtils
  *  version May. 26, 2019
  *  version Jul. 29, 2019
  *  version Aug. 18, 2019
- * @version Sep. 19, 2019
+ *  version Sep. 19, 2019
+ * @version Dec. 29, 2019
  * @author  ASAMI, Tomoharu
  */
 trait TablePart { self: LispFunction =>
@@ -33,6 +35,11 @@ trait TablePart { self: LispFunction =>
       case MimeType.TEXT_HTML => table_load_sexpr(u, p)
       case MimeType.APPLICATION_JSON => table_load_sexpr(u, p)
       case MimeType.TEXT_CSV => table_load_csv(u, p)
+      case MimeType.TEXT_TSV => table_load_tsv(u, p)
+      case MimeType.TEXT_XSV => table_load_xsv(u, p)
+      case MimeType.TEXT_LCSV => table_load_lcsv(u, p)
+      case MimeType.TEXT_LTSV => table_load_ltsv(u, p)
+      case MimeType.TEXT_LXSV => table_load_lxsv(u, p)
       case MimeType.APPLICATION_EXCEL => table_load_excel(u, p)
     }.getOrElse(RAISE.invalidArgumentFault(s"Unknown file type: $p"))
   }
@@ -61,6 +68,41 @@ trait TablePart { self: LispFunction =>
     STable(table)
   }
 
+  protected final def table_load_tsv(u: LispContext, p: ResourceHandle): STable = {
+    val strategy = Xsv.TsvStrategy
+    val xsv = Lxsv.load(strategy, p)
+    val table = Table.create(xsv)
+    STable(table)
+  }
+
+  protected final def table_load_xsv(u: LispContext, p: ResourceHandle): STable = {
+    val strategy = Xsv.XsvStrategy
+    val xsv = Lxsv.load(strategy, p)
+    val table = Table.create(xsv)
+    STable(table)
+  }
+
+  protected final def table_load_lcsv(u: LispContext, p: ResourceHandle): STable = {
+    val strategy = Xsv.CsvStrategy
+    val lxsv = Lxsv.load(strategy, p)
+    val table = Table.create(lxsv)
+    STable(table)
+  }
+
+  protected final def table_load_ltsv(u: LispContext, p: ResourceHandle): STable = {
+    val strategy = Xsv.TsvStrategy
+    val lxsv = Lxsv.load(strategy, p)
+    val table = Table.create(lxsv)
+    STable(table)
+  }
+
+  protected final def table_load_lxsv(u: LispContext, p: ResourceHandle): STable = {
+    val strategy = Xsv.XsvStrategy
+    val lxsv = Lxsv.load(strategy, p)
+    val table = Table.create(lxsv)
+    STable(table)
+  }
+
   protected final def table_load_excel(u: LispContext, p: ResourceHandle): STable = {
     // val config = u.config
     // val strategy = CsvBag.Strategy.default.update(
@@ -85,12 +127,13 @@ trait TablePart { self: LispFunction =>
     STable(table)
   }
 
-  protected final def table_make(u: LispContext, p: SExpr): STable = p match {
+  protected final def table_make(u: LispContext, p: SExpr): SExpr = p match {
     case m: STable => m
     case m: SHtml => table_make_html(xpath_traverse_node("//table", m))
     case m: SXml => table_make(m)
     case m: SJson => table_make(m)
-    case m => RAISE.notImplementedYetDefect
+    case m: SError => m
+    case m => SError.unavailableParameter(m)
   }
 
   protected final def table_make(p: SXml): STable = STable(Table.create(p.dom))

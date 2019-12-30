@@ -39,7 +39,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Aug. 25, 2019
  *  version Sep. 30, 2019
  *  version Oct. 11, 2019
- * @version Nov. 30, 2019
+ *  version Nov. 30, 2019
+ * @version Dec.  2, 2019
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -862,6 +863,7 @@ object LispFunction {
     }
 
     private def _traverse_record(rtype: ReturnType, xpath: SXPath, p: SRecord) = {
+      // val pc = JXPathContext.newContext(p.asObject)
       val pc = RecordJxPathContext.newContext(p.record)
       _traverse(rtype, xpath, pc)
     }
