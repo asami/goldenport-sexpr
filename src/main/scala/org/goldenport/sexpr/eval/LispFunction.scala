@@ -40,7 +40,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Sep. 30, 2019
  *  version Oct. 11, 2019
  *  version Nov. 30, 2019
- * @version Dec.  2, 2019
+ *  version Dec.  2, 2019
+ * @version Jan. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -237,17 +238,21 @@ trait IoFunction extends EffectFunction { // I/O bound
   }
 
   private def _success(c: LispContext, p: ShellCommand.Result) = {
-    val (props, stdout) = _properties(p)
+    val (props, stdout, _) = _properties(p)
     c.toResult(stdout, props)
   }
 
   private def _failure(c: LispContext, p: ShellCommand.Result) = {
-    val (props, _) = _properties(p)
-    val error = SError(s"Shell Command: ${p.waitFor}")
+    val (props, stdout, stderr) = _properties(p)
+    val aux = stderr.getString.flatMap(s =>
+      Strings.tolines(s).find(_.nonEmpty).map(x => s": $x")
+    ).getOrElse("")
+    val msg = s"Shell Command(${p.waitFor})${aux}"
+    val error = SError(msg, stdout, stderr)
     c.toResult(error, props)
   }
 
-  private def _properties(p: ShellCommand.Result): (Record, SBlob) = {
+  private def _properties(p: ShellCommand.Result): (Record, SBlob, SBlob) = {
     val retval = SNumber(p.waitFor)
     val stdout = SBlob(p.stdout)
     val stderr = SBlob(p.stderr)
@@ -256,7 +261,7 @@ trait IoFunction extends EffectFunction { // I/O bound
       "stdout" -> stdout,
       "stderr" -> stderr
     )
-    (a, stdout)
+    (a, stdout, stderr)
   }
 
   protected final def is_implicit_http_communication(u: LispContext): Boolean =
@@ -1098,6 +1103,18 @@ object LispFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
+  case object MatrixSave extends IoFunction {
+    val specification = FunctionSpecification("matrix-save", 2)
+
+    def apply(p: LispContext): LispContext = {
+      val (uri, a) = p.parameters.uriSExpr
+      val r = matrix_save(p, uri, a)
+      p.toResult(r)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
   case object MatrixChart extends IoFunction {
     val specification = FunctionSpecification("matrix-chart", 1)
 
@@ -1126,6 +1143,18 @@ object LispFunction {
     def apply(u: LispContext): LispContext = {
       val a = u.parameters.argument1[URI](specification)
       val r = table_load(u, a)
+      u.toResult(r)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
+  case object TableSave extends IoFunction {
+    val specification = FunctionSpecification("table-save", 2)
+
+    def apply(u: LispContext): LispContext = {
+      val (uri, a) = u.parameters.uriSExpr
+      val r = table_save(u, uri, a)
       u.toResult(r)
     }
 

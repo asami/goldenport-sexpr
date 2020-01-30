@@ -11,28 +11,43 @@ import org.goldenport.sexpr.eval._
 
 /*
  * @since   Apr. 16, 2019
- * @version Apr. 17, 2019
+ * @version Jan. 19, 2020
  * @author  ASAMI, Tomoharu
  */
 object SparkFunction {
   val functions = Vector(
+    SparkDataFrame
     // SparkGet, SparkQuery, SparkInsert, SparkUpdate, SparkDelete,
     // SparkCreate, SparkDrop
   )
 
-  private def x = {
-    val spark = SparkSession
-      .builder()
-      .appName("Spark SQL basic example")
-      .config("spark.some.config.option", "some-value")
-      .getOrCreate()
+  case object SparkDataFrame extends IoFunction {
+    val specification = FunctionSpecification("dataframe", 2)
 
-    import spark.implicits._
+    def apply(p: LispContext): LispContext = {
+      val r = p.parameters.head match {
+        case m: STable => p.spark.createDataFrame(m)
+        case m => RAISE.syntaxErrorFault(s"Invalid for dataframe: ${m}")
+      }
+      p.toResult(r)
+    }
 
-    // val s: String = spark.read
-    // val s: String = spark.create
-    ???
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
+
+  // private def x = {
+  //   val spark = SparkSession
+  //     .builder()
+  //     .appName("Spark SQL basic example")
+  //     .config("spark.some.config.option", "some-value")
+  //     .getOrCreate()
+
+  //   import spark.implicits._
+
+  //   // val s: String = spark.read
+  //   // val s: String = spark.create
+  //   ???
+  // }
 
   // case object SparkGet extends IoFunction {
   //   val specification = FunctionSpecification("spark-get", 2)

@@ -24,7 +24,8 @@ import org.goldenport.value._
  *  version Sep. 30, 2019
  *  version Oct.  5, 2019
  *  version Nov.  8, 2019
- * @version Dec.  7, 2019
+ *  version Dec.  7, 2019
+ * @version Jan. 26, 2020
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -96,6 +97,22 @@ case class Parameters(
   def pop: Parameters = copy(arguments = arguments.tail)
 
   def pop(count: Int): Parameters = copy(arguments = arguments.take(count))
+
+  def uriSExpr: (SUri, SExpr) = {
+    getArgumentOneBased(1).map {
+      case m: SUri => (m, argumentOneBased(2))
+      case m: SUrl => (m.asSUri, argumentOneBased(2))
+      case m: SUrn => (m.asSUri, argumentOneBased(2))
+      case m => argumentOneBased(2) match {
+        case mm: SUri => (mm, m)
+        case mm: SUrl => (mm.asSUri, m)
+        case mm: SUrn => (mm.asSUri, m)
+        case mm => RAISE.invalidArgumentFault("No SUri is specified.")
+      }
+    }.getOrElse(
+      RAISE.invalidArgumentFault("Two arguments (SUri, SExpr) are required.")
+    )
+  }
 }
 
 object Parameters {

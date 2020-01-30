@@ -17,6 +17,7 @@ import org.goldenport.sexpr.eval.projector.ProjectorFunction
 import org.goldenport.sexpr.eval.camel.CamelFunction
 import org.goldenport.sexpr.eval.aws.AwsFunction
 import org.goldenport.sexpr.eval.sci.SciFunction
+import org.goldenport.sexpr.eval.spark.SparkFunction
 
 /*
  * @since   Aug.  8, 2013
@@ -33,7 +34,8 @@ import org.goldenport.sexpr.eval.sci.SciFunction
  *  version Aug. 31, 2019
  *  version Sep. 30, 2019
  *  version Oct. 14, 2019
- * @version Nov. 16, 2019
+ *  version Nov. 16, 2019
+ * @version Jan. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -258,6 +260,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   def useCamel: Boolean = true
   def useAws: Boolean = true
   def useSci: Boolean = true
+  def useSpark: Boolean = true
 
   private lazy val _functions: Vector[LispFunction] = {
     import LispFunction._
@@ -273,13 +276,13 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       Fetch, Retry, Sh,
       HttpGet, HttpPost, HttpPut, HttpDelete,
       VectorVerticalFill,
-      MatrixHorizontalConcatenate, MatrixLoad, MatrixChart,
+      MatrixHorizontalConcatenate, MatrixLoad, MatrixSave, MatrixChart,
       RecordMake,
-      TableLoad, TableMake, TableMatrix, TableChart
+      TableLoad, TableSave, TableMake, TableMatrix, TableChart
     ) ++ EmacsLispFunction.functions ++ SchemeFunction.functions ++
     _sql_functions ++ _store_functions ++ _entity_functions ++ _repository_functions ++
     _chart_functions ++
-    _projector_functions ++ _camel_functions ++ _aws_functions ++ _sci_functions
+    _projector_functions ++ _camel_functions ++ _aws_functions ++ _sci_functions ++ _spark_functions
   }
 
   private def _sql_functions = 
@@ -329,6 +332,12 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   private def _sci_functions = 
     if (useSci)
       SciFunction.functions
+    else
+      Vector.empty
+
+  private def _spark_functions = 
+    if (useSpark)
+      SparkFunction.functions
     else
       Vector.empty
 

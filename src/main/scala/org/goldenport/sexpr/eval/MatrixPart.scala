@@ -1,10 +1,12 @@
 package org.goldenport.sexpr.eval
 
 import java.net.URI
+import java.io.File
 import breeze.linalg.{Vector => BVector, _}
 // import breeze.plot._
 import org.goldenport.RAISE
 import org.goldenport.record.v2.bag.CsvBag
+import org.goldenport.record.v3.Table
 import org.goldenport.record.chart.{Chart, Space}
 import org.goldenport.matrix.IMatrix
 import org.goldenport.sexpr._
@@ -15,27 +17,37 @@ import org.goldenport.sexpr._
  *  version Feb. 12, 2019
  *  version Mar. 10, 2019
  *  version Aug.  4, 2019
- * @version Sep. 19, 2019
+ *  version Sep. 19, 2019
+ * @version Jan. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 trait MatrixPart { self: LispFunction =>
   protected final def matrix_load(u: LispContext, p: URI): SExpr = {
-    val config = u.config
-    val strategy = CsvBag.Strategy.matrixAuto.update(
-      Some(CsvBag.Strategy.matrixAuto.recordBagStrategy.update(
-        config.getString("csv.codec").map(scalax.io.Codec.apply),
-        None,
-        None,
-        None
-      )),
-      config.getString("csv.name"),
-      config.getString("csv.lineEnd"),
-      config.getBoolean("csv.isForceDoubleQuote")
-    )
-    val csv = CsvBag.load(p, strategy)
-    val matrix = csv.toMatrixDouble
+    val h = u.takeResourceHandle(p)
+    val strategy = csv_strategy(u.config)
+    val csv = CsvBag.loadResource(h, strategy)
+    val raw = csv.toMatrixString
+    val t = Table.createStringAutoNumber(raw)
+    val matrix = t.matrixDoubleDistilled
     SMatrix(matrix)
   }
+
+  protected final def matrix_save(u: LispContext, uri: SUri, p: SExpr): SExpr =
+    uri.getFile.
+      map(matrix_save(u, _, _imatrix(p))).
+      getOrElse(RAISE.notImplementedYetDefect)
+
+  protected final def matrix_save(u: LispContext, file: File, p: SExpr): SExpr =
+    matrix_save(u, file, _imatrix(p))
+
+  protected final def matrix_save(u: LispContext, file: File, p: IMatrix[Double]): SExpr =
+    SExpr.run {
+      val data = p.rowIterator.map(_.map(_.toString)).toVector
+      val strategy = csv_strategy(u.config)
+      val csv = CsvBag.create(file, strategy)
+      csv.write(data) // TODO enable isForceDoubleQuote (a CSVWriter issue)
+      SBoolean.TRUE
+    }
 
   protected final def matrix_chart(u: LispContext, p: IMatrix[Double]): SExpr = {
     // val f = Figure()
@@ -54,6 +66,11 @@ trait MatrixPart { self: LispFunction =>
       withYLabel("y axis").
       withSeries(series.series)
     u.feature.chart.draw(chart)
+  }
+
+  private def _imatrix(p: SExpr): IMatrix[Double] = p match {
+    case SMatrix(v) => v
+    case m => RAISE.notImplementedYetDefect
   }
 }
 

@@ -35,10 +35,12 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Aug. 17, 2019
  *  version Sep. 30, 2019
  *  version Oct. 31, 2019
- * @version Nov.  8, 2019
+ *  version Nov.  8, 2019
+ * @version Jan. 19, 2020
  * @author  ASAMI, Tomoharu
  */
-trait LispContext extends EvalContext with ParameterPart with ScriptEnginePart {
+trait LispContext extends EvalContext with ParameterPart
+    with ScriptEnginePart with SparkPart {
   def config: LispConfig
   def i18nContext: I18NContext
   def evaluator: LispContext => LispContext

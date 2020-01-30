@@ -1,6 +1,7 @@
 package org.goldenport.sexpr.eval
 
 import java.net.URI
+import java.io.File
 import org.goldenport.RAISE
 import org.goldenport.io.{ResourceHandle, MimeType}
 import org.goldenport.record.v2.{Schema, Column}
@@ -20,7 +21,8 @@ import org.goldenport.sexpr._
  *  version Jul. 29, 2019
  *  version Aug. 18, 2019
  *  version Sep. 19, 2019
- * @version Dec. 29, 2019
+ *  version Dec. 29, 2019
+ * @version Jan. 26, 2020
  * @author  ASAMI, Tomoharu
  */
 trait TablePart { self: LispFunction =>
@@ -127,6 +129,23 @@ trait TablePart { self: LispFunction =>
     STable(table)
   }
 
+  protected final def table_save(u: LispContext, uri: SUri, p: SExpr): SExpr =
+    uri.getFile.
+      map(table_save(u, _, _table(p))).
+      getOrElse(RAISE.notImplementedYetDefect)
+
+  protected final def table_save(u: LispContext, file: File, p: SExpr): SExpr =
+    table_save(u, file, _table(p))
+
+  protected final def table_save(u: LispContext, file: File, p: ITable): SExpr =
+    SExpr.run {
+      val data = p.matrix.columnIterator.map(_.map(_.toString)).toVector
+      val strategy = csv_strategy(u.config).withSchema(p.schema)
+      val csv = CsvBag.create(file, strategy)
+      csv.write(data)
+      SBoolean.TRUE
+    }
+
   protected final def table_make(u: LispContext, p: SExpr): SExpr = p match {
     case m: STable => m
     case m: SHtml => table_make_html(xpath_traverse_node("//table", m))
@@ -154,6 +173,11 @@ trait TablePart { self: LispFunction =>
   protected final def table_chart(u: LispContext, p: ITable): SExpr = {
     val chart = u.feature.chart.buildChart(u, p)
     u.feature.chart.draw(chart)
+  }
+
+  private def _table(p: SExpr): ITable = p match {
+    case STable(t) => t
+    case m => RAISE.notImplementedYetDefect
   }
 
   // protected final def table_chart(u: LispContext, p: ITable): SExpr = {

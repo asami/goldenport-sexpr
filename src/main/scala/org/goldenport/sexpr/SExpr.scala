@@ -8,6 +8,8 @@ import scala.concurrent.{Future, Promise, Await}
 import scala.concurrent.duration.Duration
 import java.util.Locale
 import java.net.{URL, URI}
+import java.io.File
+import java.lang.reflect.InvocationTargetException
 import org.joda.time._
 import play.api.libs.json._
 import org.goldenport.RAISE
@@ -15,23 +17,24 @@ import org.goldenport.Strings
 import org.goldenport.i18n.{I18NString, I18NTemplate}
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.extension.IWindow
-import org.goldenport.matrix.IMatrix
-import org.goldenport.record.v2.Schema
-import org.goldenport.record.v3.{IRecord, Record, ITable, RecordSequence}
+import org.goldenport.matrix.{IMatrix, Matrix}
+import org.goldenport.record.v2.{Schema, Column, XDouble}
+import org.goldenport.record.v3.{IRecord, Record, ITable, Table, RecordSequence}
 import org.goldenport.record.http.{Request, Response}
 import org.goldenport.record.store.Query
 import org.goldenport.record.chart.{Chart, Space, Series, Particle}
 import org.goldenport.value._
 import org.goldenport.values.{Urn, NumberRange, ValueRange, NumberInterval, DateTimePeriod, Money, Percent}
-import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource}
+import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource, UriUtils}
 import org.goldenport.bag.{ChunkBag, StringBag}
 import org.goldenport.xml.dom.{DomParser, DomUtils}
 import org.goldenport.parser.{LogicalToken, ParseResult}
 import org.goldenport.parser.ScriptToken
 import org.goldenport.parser.CommandParser
 import org.goldenport.xsv.Lxsv
-import org.goldenport.util.{StringUtils, AnyRefUtils}
+import org.goldenport.util.{StringUtils, AnyRefUtils, AnyUtils}
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
+import org.goldenport.sexpr.eval.spark.SparkDataFrame
 // import org.goldenport.sexpr.eval.chart.Chart
 
 /**
@@ -58,8 +61,9 @@ import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncid
  *  version Aug. 25, 2019
  *  version Sep. 29, 2019
  *  version Oct. 31, 2019
-table *  version Nov. 30, 2019
-table * @version Dec. 30, 2019
+ *  version Nov. 30, 2019
+ *  version Dec. 30, 2019
+ * @version Jan. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -195,6 +199,38 @@ sealed trait SExpr {
 
 trait IDom { self: SExpr =>
   def dom: org.w3c.dom.Node
+}
+
+// trait IWindow {
+//   def close(): Unit
+// }
+
+// class JavaFXWindow(window: org.goldenport.javafx.JavaFXWindow) extends IWindow {
+//   def close() = window.close()
+// }
+
+// trait IMatrix
+// trait IPath
+// trait IScript
+// TODO Document or Voucher
+trait IDocument extends IRecord
+trait IVoucher extends IRecord
+
+trait IProcess {
+  def result: Future[SExpr]
+}
+
+class FutureProcess(val result: Future[SExpr]) extends IProcess {
+}
+
+class PromiseProcess() extends IProcess {
+  val promise: Promise[SExpr] = Promise[SExpr]
+  val result: Future[SExpr] = promise.future
+
+  def success(p: SExpr): Unit = promise.success(p)
+}
+
+trait IDataFrame {
 }
 
 case class SAtom(name: String) extends SExpr {
@@ -398,42 +434,51 @@ case class SError(
   label: Option[String],
   exception: Option[Throwable],
   incident: Option[Incident],
-  errors: Option[NonEmptyVector[SError]]
+  errors: Option[NonEmptyVector[SError]],
+  stdout: Option[SBlob] = None,
+  stderr: Option[SBlob] = None
 ) extends SExpr {
   override def asObject = exception getOrElse this
   def message: String = label orElse incident.map(_.show) orElse exception.map(_.toString) getOrElse errors.map(_.list.map(_.show).mkString(";")).getOrElse("")
   // override def print = detailTitle
   // override def show = detailTitle
   override def titleInfo = message
-  protected override def show_Content = exception.flatMap(e =>
-    Option(e.getStackTrace).flatMap(ss =>
-      if (ss.isEmpty)
+  protected override def show_Content = {
+    exception.flatMap(e =>
+      Option(e.getStackTrace).flatMap(ss =>
+        if (ss.isEmpty)
+          None
+        else
+          Some("===Stack==\n" + ss.map(_.toString).mkString("\n"))
+      )
+    ) orElse stderr.flatMap(_.getString.flatMap(s =>
+      if (s.isEmpty)
         None
       else
-        Some("Stack:\n" + ss.map(_.toString).mkString("\n"))
-    )
-  )
+        Some("===Stderr=== \n" + s)
+    ))
+  }
   override def descriptionContent = Vector(
     exception.flatMap(e =>
       Option(e.getStackTrace).flatMap(ss =>
         if (ss.isEmpty)
           None
         else
-          Some("Stack:" +: ss.map(_.toString).toVector)
+          Some("===Stack===" +: ss.map(_.toString).toVector)
       )
     )
   ).flatten.flatten
 }
 object SError {
   def apply(p: String): SError = SError(Some(p), None, None, None)
-  def apply(p: Throwable): SError = SError(None, Some(p), None, None)
-  def apply(label: String, e: Throwable): SError = SError(Some(label), Some(e), None, None)
+  def apply(p: Throwable): SError = SError(None, Some(_normalize(p)), None, None)
+  def apply(label: String, e: Throwable): SError = SError(Some(label), Some(_normalize(e)), None, None)
   def apply(start: Long, req: Request, res: Response): SError = {
     val i = RestIncident(start, req, res)
     SError(None, None, Some(i), None)
   }
   def apply(start: Long, req: Request, e: Throwable): SError = {
-    val i = RestIncident(start, req, e)
+    val i = RestIncident(start, req, _normalize(e))
     SError(None, Some(e), Some(i), None)
   }
   // def apply(p: Response): SError = SError(None, None, None, Some(p), None)
@@ -443,6 +488,8 @@ object SError {
     case x :: Nil => x
     case _ => SError(None, None, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
   }
+  def apply(p: String, stdout: SBlob, stderr: SBlob): SError =
+    SError(Some(p), None, None, None, Some(stdout), Some(stderr))
 
   def apply(ps: NonEmptyVector[SError]): SError = {
     if (ps.tail.isEmpty)
@@ -450,7 +497,6 @@ object SError {
     else
       SError(None, None, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
   }
-
 
   def create(p: SError, ps: Iterable[SError]): SError = apply(NonEmptyVector(p, ps.toVector))
 
@@ -494,6 +540,11 @@ object SError {
   }
 
   def syntaxError(p: String): SError = SError(p)
+
+  private def _normalize(p: Throwable): Throwable = p match {
+    case m: InvocationTargetException => Option(m.getTargetException) orElse Option(m.getCause) getOrElse m
+    case m => m
+  }
 }
 
 case class SException() extends SExpr {
@@ -518,36 +569,6 @@ case class SConsoleOutput(output: String) extends SExpr {
   override def display = output
   override protected def show_Content = Some(output)
 }
-
-// TODO Document or Voucher
-trait IDocument extends IRecord
-trait IVoucher extends IRecord
-
-trait IProcess {
-  def result: Future[SExpr]
-}
-
-class FutureProcess(val result: Future[SExpr]) extends IProcess {
-}
-
-class PromiseProcess() extends IProcess {
-  val promise: Promise[SExpr] = Promise[SExpr]
-  val result: Future[SExpr] = promise.future
-
-  def success(p: SExpr): Unit = promise.success(p)
-}
-
-// trait IWindow {
-//   def close(): Unit
-// }
-
-// class JavaFXWindow(window: org.goldenport.javafx.JavaFXWindow) extends IWindow {
-//   def close() = window.close()
-// }
-
-// trait IMatrix
-// trait IPath
-// trait IScript
 
 case class SBinary(binary: ChunkBag) extends SExpr {
 //  override def print = show
@@ -644,6 +665,18 @@ case class STable(table: ITable) extends SExpr {
   override protected def print_String = table.print
   override protected def display_String = table.display
   override protected def show_Content: Option[String] = Some(table.show)
+
+  def matrix: SMatrix = SMatrix(table.toTable.matrixDoubleDistilled)
+
+  // def matrix: SMatrix = {
+  //   val schema = table.schema
+  //   val xs: Vector[Vector[Double]] = _vector.map(_matrix_row(_matrix_columns, _))
+  //   val mx = Matrix.createDouble(xs)
+  //   SMatrix(mx)
+  // }
+
+//  def dataframe: SDataFrame = SDataFrame(SparkDataFrame.create(table))
+
   def width = table.width
   def height = table.height
   def isEmpty = table.height == 0
@@ -652,8 +685,11 @@ case class STable(table: ITable) extends SExpr {
   def tail: STable = STable(_table.tail)
   def list: SList = SList.create(_vector)
   def vector: SVector = SVector(_vector)
-  def row(i: Int): SExpr = _table.getRow(i).map(SRecord(_)).getOrElse(SNil)
-  def column(i: Int): SVector = RAISE.notImplementedYetDefect
+  def row(y: Int): SExpr = _table.getRow(y).map(SRecord(_)).getOrElse(SNil)
+  def column(x: Int): SVector = SVector.lift(_table.column(x))
+  def column(x: String): SVector = SVector.lift(_table.column(x))
+  def at(x: Int, y: Int): SExpr = SExpr.create(_table.get(x, y))
+  def at(x: String, y: Int): SExpr = SExpr.create(_table.get(x, y))
 
   private lazy val _table = table.toTable
   private lazy val _vector = table.toRecordVector.map(SRecord(_))
@@ -666,11 +702,16 @@ case class SVector(vector: Vector[SExpr]) extends SExpr {
   override protected def display_String = vector.map(_.embed).mkString("[", " ", "]")
   override protected def show_Content: Option[String] = Some(display)
   def length = vector.length
+  def list: SList = SList.create(vector)
+  def head: Option[SExpr] = vector.headOption
+  def tail: SVector = SVector(vector.tail)
+  def at(i: Int): SExpr = vector(i)
   def +(rhs: SVector): SVector = RAISE.notImplementedYetDefect
   def -(rhs: SVector): SVector = RAISE.notImplementedYetDefect
 }
 object SVector {
   def create(ps: Seq[SExpr]): SVector = SVector(ps.toVector)
+  def lift(ps: Seq[Any]): SVector = SVector(ps.toVector.map(SExpr.create))
 }
 
 case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
@@ -680,6 +721,14 @@ case class SMatrix(matrix: IMatrix[Double]) extends SExpr {
   override protected def print_String = matrix.print
   override protected def display_String = matrix.display
   override protected def show_Content: Option[String] = Some(matrix.show)
+
+  def row(i: Int): SVector = SVector(matrix.rowVector(i).map(SNumber(_)))
+  def column(i: Int): SVector = SVector(matrix.columnVector(i).map(SNumber(_)))
+  def at(x: Int, y: Int): SNumber = SNumber(matrix.apply(x, y))
+
+  def table: STable = STable(Table.createDouble(matrix))
+
+//  def dataframe: SDataFrame = SDataFrame.create(matrix)
 
   def transpose: SMatrix = SMatrix(matrix.transpose)
   def t: SMatrix = transpose
@@ -754,6 +803,16 @@ object SMatrix {
   }
 }
 
+case class SDataFrame(dataframe: IDataFrame) extends SExpr {
+  def table: STable = RAISE.notImplementedYetDefect
+  def matrix: SMatrix = RAISE.notImplementedYetDefect
+}
+object SDataFrame {
+  // import org.goldenport.sexpr.eval.spark.SparkDataFrame
+
+  // def create(p: IMatrix[Double]): SDataFrame = SDataFrame(SparkDataFrame.create(p))
+}
+
 case class SLxsv(lxsv: Lxsv) extends SExpr {
   override def equals(o: Any): Boolean = o match {
     case m: SLxsv => lxsv == m.lxsv
@@ -782,6 +841,8 @@ case class SUrl(url: java.net.URL) extends SExpr {
   // def print = show
   // def show = url.toString
 
+  def asSUri: SUri = SUri(asUri)
+
   def getSuffix: Option[String] = Option(url.getFile).flatMap(StringUtils.getSuffix)
 
   def isXmlFamily = isXml || isHtml || isXsl
@@ -794,6 +855,7 @@ case class SUrn(urn: Urn) extends SExpr {
   override lazy val getString = Some(asString)
   override lazy val asString = urn.text
   override def asUri = urn.toURI
+  def asSUri: SUri = SUri(asUri)
   // def print = show
   // def show = urn.toString
 }
@@ -804,6 +866,10 @@ case class SUri(uri: URI) extends SExpr {
   override def asUri = uri
   // def print = show
   // def show = urn.toString
+
+  def getFile: Option[File] = UriUtils.getFile(uri)
+  def getUrl: Option[URL] = UriUtils.getUrl(uri)
+  def getUrn: Option[Urn] = UriUtils.getUrn(uri)
 }
 
 case class SExpression(expression: String) extends SExpr {
