@@ -2,7 +2,7 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "2.0.9"
+version := "2.0.10"
 
 scalaVersion := "2.10.3"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")
@@ -15,15 +15,17 @@ scalacOptions += "-unchecked"
 
 resolvers += "Maven" at "https://repo1.maven.org/maven2"
 
-resolvers += "GitHab releases" at "https://raw.github.com/asami/maven-repository/2019/releases"
+resolvers += "GitHab releases 2019" at "https://raw.github.com/asami/maven-repository/2019/releases"
 
 resolvers += "GitHab releases" at "https://raw.github.com/asami/maven-repository/2020/releases"
 
 resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.2.55"
+resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 
-libraryDependencies += "org.goldenport" %% "goldenport-record" % "1.3.19" % "provided"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.2.56"
+
+libraryDependencies += "org.goldenport" %% "goldenport-record" % "1.3.20" % "provided"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3" % "compile"
 
