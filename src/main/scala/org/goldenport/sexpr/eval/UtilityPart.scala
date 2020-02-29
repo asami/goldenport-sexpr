@@ -9,7 +9,8 @@ import org.goldenport.sexpr._
 /*
  * @since   Mar. 30, 2019
  *  version Mar. 31, 2019
- * @version Jan. 26, 2020
+ *  version Jan. 26, 2020
+ * @version Feb. 26, 2020
  * @author  ASAMI, Tomoharu
  */
 trait UtilityPart { self: LispFunction =>
@@ -22,6 +23,7 @@ trait UtilityPart { self: LispFunction =>
 
   protected final def get_database(p: Parameters): Option[Symbol] = get_property_symbol(p, 'database)
 
+  // See LispContext#_csv_strategy
   protected final def csv_strategy(config: LispConfig) = CsvBag.Strategy.matrixAuto.update(
     Some(CsvBag.Strategy.matrixAuto.recordBagStrategy.update(
       config.getString("csv.codec").map(scalax.io.Codec.apply),

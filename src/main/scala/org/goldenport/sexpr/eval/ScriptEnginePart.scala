@@ -13,7 +13,8 @@ import org.goldenport.sexpr._
  * @since   Sep. 18, 2018
  *  version Aug. 31, 2019
  *  version Sep. 29, 2019
- * @version Nov. 29, 2019
+ *  version Nov. 29, 2019
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 trait ScriptEnginePart { self: LispContext =>
@@ -72,11 +73,7 @@ trait ScriptEnginePart { self: LispContext =>
       "?" :: Strings.totokens(p.expression, ".")
     else
       Strings.totokens(p.expression, ".")
-    s match {
-      case Nil => None
-      case x :: Nil => None
-      case xs => _eval_simple_expression_option(xs)
-    }
+    _eval_simple_expression_option(s)
   }
 
   private def _eval_simple_expression_option(ps: List[String]): Option[LispContext] =
@@ -112,7 +109,7 @@ trait ScriptEnginePart { self: LispContext =>
     case Nil => RAISE.noReachDefect
     case x :: Nil =>
       val (expr, format) = _parse_format(x)
-      bindings.get(x).map(x => toResult(_format(format, SExpr.create(x))))
+      _get_property(expr).map(x => toResult(_format(format, SExpr.create(x))))
     // case xs =>
     //   val key = xs.init.mkString(".") // TODO
     //   val (propertyname, format) = _parse_format(xs.last)
@@ -136,23 +133,26 @@ trait ScriptEnginePart { self: LispContext =>
       case Nil => None
       case xs => 
         val key = xs.mkString(".")
-        val v = key match {
-          case "#" => Some(takeHistory)
-          case "?" => Some(peek)
-          case "!" => Some(takeCommandHistory)
-          case _ => StringUtils.getMarkInt(key).collect {
-            case ("#", i) => takeHistory(i)
-            case ("?", i) => peek(i)
-            case ("!", i) => takeCommandHistory(i)
-          }.orElse(
-            bindings.get(key)
-          )
-        }
+        val v = _get_property(key)
         v.flatMap {
           case m: AnyRef => _eval_bean(m, path)
           case _ => None
         }.orElse(_eval_simple_expression(property.init, property.last :: path))
     }
+
+  // See org.goldenport.kaleidox.lisp.Evaluator.normalize.
+  private def _get_property(key: String): Option[Any] = key match {
+    case "#" => Some(takeHistory)
+    case "?" => Some(peek)
+    case "!" => Some(takeCommandHistory)
+    case _ => StringUtils.getMarkInt(key).collect {
+      case ("#", i) => takeHistory(i)
+      case ("?", i) => peek(i)
+      case ("!", i) => takeCommandHistory(i)
+    }.orElse(
+      bindings.get(key)
+    )
+  }
 
   private def _eval_bean(o: Any, path: List[String]): Option[LispContext] =
     o match {

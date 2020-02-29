@@ -35,7 +35,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Sep. 30, 2019
  *  version Oct. 14, 2019
  *  version Nov. 16, 2019
- * @version Jan. 30, 2020
+ *  version Jan. 30, 2020
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -69,7 +70,8 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     // println(s"apply_context: $c")
     val ctx0 = lift_Context(c)
     val ctx1 = syntax_expansion(ctx0)
-    val ctx = macro_expansion(ctx1)
+    val ctx2 = macro_expansion(ctx1)
+    val ctx = normalize_context(ctx2)
     apply_lambda_option(ctx).orElse(
       get_function(lift_Context(ctx)).
         map(apply_function(ctx, _))
@@ -96,6 +98,15 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   }
 
   protected def macro_expansion(c: LispContext): LispContext = c
+
+  protected def normalize_context(c: LispContext): LispContext = {
+    c.value match {
+      case SAtom(name) => resolve_Aliase(name).map(c.pure(_)).getOrElse(c)
+      case _ => c
+    }
+  }
+
+  protected def resolve_Aliase(name: String): Option[SExpr] = None
 
   protected def apply_lambda_option(c: LispContext): Option[LispContext] = {
     c.value match {
@@ -278,7 +289,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       VectorVerticalFill,
       MatrixHorizontalConcatenate, MatrixLoad, MatrixSave, MatrixChart,
       RecordMake,
-      TableLoad, TableSave, TableMake, TableMatrix, TableChart
+      TableLoad, TableSave, TableMake, TableMatrix, TableSelect, TableSimpleRegression, TableChart
     ) ++ EmacsLispFunction.functions ++ SchemeFunction.functions ++
     _sql_functions ++ _store_functions ++ _entity_functions ++ _repository_functions ++
     _chart_functions ++

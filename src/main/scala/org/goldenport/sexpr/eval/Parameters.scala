@@ -25,7 +25,8 @@ import org.goldenport.value._
  *  version Oct.  5, 2019
  *  version Nov.  8, 2019
  *  version Dec.  7, 2019
- * @version Jan. 26, 2020
+ *  version Jan. 26, 2020
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -88,7 +89,18 @@ case class Parameters(
     case SAtom(n) => n
     case m => SError.invalidDatatype(p.name, m)
   }
+  def getPropertyStringList(p: Symbol): List[String] = getProperty(p).map {
+    case SString(s) => List(s)
+    case SAtom(n) => List(n)
+    case m: SList => m.list.map {
+      case SString(s) => s
+      case SAtom(n) => n
+      case m => SError.invalidDatatype(p.name, m).RAISE // SError.invalidDatatype(p.name, m)
+    }
+    case m => SError.invalidDatatype(p.name, m).RAISE // SError.invalidDatatype(p.name, m)
+  }.getOrElse(Nil)
   def getPropertySymbol(p: Symbol): Option[Symbol] = getPropertyString(p).map(Symbol(_))
+  def getPropertySymbolList(p: Symbol): List[Symbol] = getPropertyStringList(p).map(Symbol(_))
 
   def isSwitch(p: Symbol): Boolean = switches.contains(p)
 
@@ -306,6 +318,27 @@ object Parameters {
         }.getOrElse {
           to_success(nextspec, None)
         }
+    }
+
+    // TODO unordered parameters
+    def table(u: LispContext): (Cursor, ValidationNel[SError, STable]) = {
+      val t = parameters.arguments(0) match {
+        case m: STable => m
+        case m: SMatrix => m.table
+        case SUrl(url) => u.loadTable(url)
+        case SUri(uri) => u.loadTable(uri)
+        case m => RAISE.invalidArgumentFault(s"Not table: $m")
+      }
+      val r = Success(t).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
+    def propertyStringList(key: Symbol): (Cursor, ValidationNel[SError, List[String]]) = {
+      val x = parameters.getPropertyStringList(key)
+      val r = Success(x).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
     }
   }
 }

@@ -1,7 +1,7 @@
 package org.goldenport.sexpr.eval
 
 import scalaz._, Scalaz._
-import java.net.URI
+import java.net.{URI, URL}
 import scala.util.control.NonFatal
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Future, Await}
@@ -17,7 +17,11 @@ import org.goldenport.record.http.Response
 import org.goldenport.log.LogMark._
 import org.goldenport.cli.ShellCommand
 import org.goldenport.io.{ResourceManager, ResourceHandle, ResourceLocator}
+import org.goldenport.io.MimeType
+import org.goldenport.bag.ChunkBag
+import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.incident.{Incident => LibIncident}
+import org.goldenport.matrix.INumericalOperations
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.store.StoreFeature
 import org.goldenport.sexpr.eval.chart.ChartFeature
@@ -36,7 +40,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Sep. 30, 2019
  *  version Oct. 31, 2019
  *  version Nov.  8, 2019
- * @version Jan. 19, 2020
+ *  version Jan. 19, 2020
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart
@@ -51,24 +56,33 @@ trait LispContext extends EvalContext with ParameterPart
   def resourceManager: ResourceManager
   def feature: FeatureContext
   def incident: Option[LibIncident]
+  def numericalOperations: INumericalOperations
 
   def locale = i18nContext.locale
 
   def takeResourceHandle(p: ResourceLocator): ResourceHandle = resourceManager.takeHandle(p)
   def takeResourceHandle(p: URI): ResourceHandle = resourceManager.takeHandle(p)
+  def takeResourceHandle(p: URL): ResourceHandle = resourceManager.takeHandle(p)
 
   def pure(p: SExpr): LispContext
 
   override def resolve: LispContext = super.resolve.asInstanceOf[LispContext]
 
-  def reductForEval: LispContext = {
+  def reductForEval: LispContext = reductForEvalDeep
+
+  private def reductForEvalShallow: LispContext = {
     value match {
       case xs: SList => xs.list match {
         case Nil => this
         case x :: Nil => this
         case x :: xs =>
           // log.trace(s"reduct input($x): $xs")
-          val a = xs.map(x => evaluator(pure(x)).value)
+          val a = xs.map(x =>
+            evaluator(pure(x)).value match {
+              case SMute(expr) => expr
+              case m => m
+            }
+          )
           log.trace(s"reduct input($x): $xs => $a")
           pure(SList.create(x +: a))
       }
@@ -76,7 +90,7 @@ trait LispContext extends EvalContext with ParameterPart
     }
   }
 
-  def reductForEval0: LispContext = {
+  private def reductForEvalDeep: LispContext = {
     case class Z(function: SExpr, c: LispContext, xs: Vector[SExpr] = Vector.empty) {
       def r = {
         val x = c.pure(SList.create(function +: xs))
@@ -85,7 +99,11 @@ trait LispContext extends EvalContext with ParameterPart
       }
       def +(rhs: SExpr) = {
         val r = evaluator(c.pure(rhs))
-        val x = Z(function, r, xs :+ r.value)
+        val v = r.value match {
+          case SMute(expr) => expr
+          case m => m
+        }
+        val x = Z(function, r, xs :+ v)
         log.trace(s"reduct in: $rhs => ${x}")
         x
       }
@@ -203,7 +221,168 @@ trait LispContext extends EvalContext with ParameterPart
   def formatMessage(rule: String, ps: Seq[SExpr]): String = i18nContext.formatMessage(rule, ps.map(_.asObject))
 
   def formatMessageKey(key: String, ps: Seq[SExpr]): String = i18nContext.formatMessageKey(key, ps.map(_.asObject))
+
+  def resolveUrn(urn: SUrn): SExpr = urn // TODO driver
+
+  def unmarshall(url: URL, p: ChunkBag): SExpr = unmarshall(MimeType.getBySuffix(url), p)
+
+  def unmarshall(mime: Option[MimeType], p: ChunkBag): SExpr =
+    mime.map(unmarshall(_, p)).getOrElse(SBlob(p))
+
+  def unmarshall(mime: MimeType, p: ChunkBag): SExpr = { // TODO customizable
+    def stringorclob = p.getSize.map(size =>
+      if (size > 8192)
+        SString(p.toText)
+      else
+        SClob(p)
+    ).getOrElse(SClob(p))
+    _unmarshall_option(mime, p).getOrElse(
+      if (mime.isText)
+        stringorclob
+      else
+        SBlob(p)
+    )
+  }
+
+  def unmarshall(mime: MimeType, p: String): SExpr = { // TODO customizable
+    _unmarshall_option(mime, p).getOrElse(SString(p))
+  }
+
+  private def _unmarshall_option(mime: MimeType, p: ChunkBag): Option[SExpr] =
+    Option(mime).collect {
+      case MimeType.TEXT_CSV => loadTableCsv(p)
+      case MimeType.APPLICATION_EXCEL => loadTableExcel(p)
+    }.orElse(_unmarshall_option(mime, p.toText))
+
+  private def _unmarshall_option(mime: MimeType, p: => String): Option[SExpr] =
+    Option(mime) collect {
+      case MimeType.TEXT_XSL => SXsl(p)
+      case MimeType.TEXT_CSV => loadTableCsv(p) // XXX
+      case m if m.isHtml => SHtml(p)
+      case m if m.isXml => SXml(p)
+      case m if m.isJson => SJson(p)
+    }
+
+  def loadTable(p: SUri): STable = loadTable(p.uri)
+
+  def loadTable(p: URI): STable = loadTable(takeResourceHandle(p))
+
+  def loadTable(p: SUrl): STable = loadTable(p.url)
+
+  def loadTable(p: URL): STable = loadTable(takeResourceHandle(p))
+
+  def loadTable(p: ResourceHandle): STable = {
+    p.getMimeType.collect {
+      case MimeType.TEXT_XML => loadTableSExpr(p)
+      case MimeType.TEXT_HTML => loadTableSExpr(p)
+      case MimeType.APPLICATION_JSON => loadTableSExpr(p)
+      case MimeType.TEXT_CSV => loadTableCsv(p)
+      case MimeType.TEXT_TSV => loadTableTsv(p)
+      case MimeType.TEXT_XSV => loadTableXsv(p)
+      case MimeType.TEXT_LCSV => loadTableLcsv(p)
+      case MimeType.TEXT_LTSV => loadTableLtsv(p)
+      case MimeType.TEXT_LXSV => loadTableLxsv(p)
+      case MimeType.APPLICATION_EXCEL => loadTableExcel(p)
+    }.getOrElse(RAISE.invalidArgumentFault(s"Unknown file type: $p"))
+  }
+
+  def loadTableSExpr(p: ResourceHandle): STable = {
+    // val sexpr = resolve_uri(u, p)
+    // table_make(u, sexpr)
+    RAISE.notImplementedYetDefect
+  }
+
+  // See UtilityPart#csv_strategy
+  private lazy val _csv_strategy = CsvBag.Strategy.default.update(
+    Some(CsvBag.Strategy.default.recordBagStrategy.update(
+      config.getString("csv.codec").map(scalax.io.Codec.apply),
+      None,
+      None,
+      None
+    )),
+    config.getString("csv.name"),
+    config.getString("csv.lineEnd"),
+    config.getBoolean("csv.isForceDoubleQuote")
+  )
+
+  def loadTableCsv(p: ResourceHandle): STable = {
+    val csv = CsvBag.loadResource(p, _csv_strategy)
+    val table = csv.toTable
+    STable(table)
+  }
+
+  def loadTableCsv(p: ChunkBag): STable = {
+    val csv = CsvBag.create(p, _csv_strategy)
+    val table = csv.toTable
+    STable(table)
+  }
+
+  def loadTableCsv(p: String): STable = { // TODO don't work. See StringInputStream?
+    val csv = CsvBag.createFromString(p, _csv_strategy)
+    val table = csv.toTable
+    STable(table)
+  }
+
+  def loadTableTsv(p: ResourceHandle): STable = {
+    RAISE.notImplementedYetDefect
+  }
+
+  def loadTableXsv(p: ResourceHandle): STable = {
+    RAISE.notImplementedYetDefect
+  }
+
+  def loadTableLcsv(p: ResourceHandle): STable = {
+    RAISE.notImplementedYetDefect
+  }
+
+  def loadTableLtsv(p: ResourceHandle): STable = {
+    RAISE.notImplementedYetDefect
+  }
+
+  def loadTableLxsv(p: ResourceHandle): STable = {
+    RAISE.notImplementedYetDefect
+  }
+
+  private lazy val _excel_strategy = RecordBag.Strategy.plainAuto.update(
+    None,
+    None,
+    None,
+    None
+  )
+
+  def loadTableExcel(p: ResourceHandle): STable = {
+    // val config = u.config
+    // val strategy = CsvBag.Strategy.default.update(
+    //   Some(CsvBag.Strategy.default.recordBagStrategy.update(
+    //     config.getString("csv.codec").map(scalax.io.Codec.apply),
+    //     None,
+    //     None,
+    //     None
+    //   )),
+    //   config.getString("csv.name"),
+    //   config.getString("csv.lineEnd"),
+    //   config.getBoolean("csv.isForceDoubleQuote")
+    // )
+    val excel = ExcelBag.loadResource(p, _excel_strategy)
+    val table = excel.toTable
+    STable(table)
+  }
+
+  def loadTableExcel(p: ChunkBag): STable = {
+    val strategy = _excel_strategy
+    val name = "unknown"
+    val file = p.switchToFileBag
+    val excel = ExcelBag.create(
+      ExcelBag.Xlsx,
+      file,
+      strategy,
+      name
+    )
+    val table = excel.toTable
+    STable(table)
+  }
 }
+
 object LispContext {
   val defaultServiceLogic = UnitOfWorkLogic.printer
   val defaultStoreLogic = StoreOperationLogic.printer
@@ -226,6 +405,7 @@ object LispContext {
         SqlContext.createConnectionPool(config.properties, querycontext)
     }
     val resourceManager = new ResourceManager()
+    val numericalOperations = config.numericalOperations
     val featurecontext = FeatureContext(
       new StoreFeature(config.properties, sqlcontext),
       ChartFeature.default
@@ -239,6 +419,7 @@ object LispContext {
       scriptContext,
       sqlcontext,
       resourceManager,
+      numericalOperations,
       featurecontext,
       x,
       None,
@@ -255,6 +436,7 @@ object LispContext {
     scriptContext: ScriptEngineContext,
     sqlContext: SqlContext,
     resourceManager: ResourceManager,
+    numericalOperations: INumericalOperations,
     feature: FeatureContext,
     value: SExpr,
     incident: Option[LibIncident],

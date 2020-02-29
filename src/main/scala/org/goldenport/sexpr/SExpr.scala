@@ -63,7 +63,8 @@ import org.goldenport.sexpr.eval.spark.SparkDataFrame
  *  version Oct. 31, 2019
  *  version Nov. 30, 2019
  *  version Dec. 30, 2019
- * @version Jan. 30, 2020
+ *  version Jan. 30, 2020
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -438,6 +439,8 @@ case class SError(
   stdout: Option[SBlob] = None,
   stderr: Option[SBlob] = None
 ) extends SExpr {
+  def RAISE: Nothing = throw new SError.SErrorException(this)
+
   override def asObject = exception getOrElse this
   def message: String = label orElse incident.map(_.show) orElse exception.map(_.toString) getOrElse errors.map(_.list.map(_.show).mkString(";")).getOrElse("")
   // override def print = detailTitle
@@ -544,6 +547,9 @@ object SError {
   private def _normalize(p: Throwable): Throwable = p match {
     case m: InvocationTargetException => Option(m.getTargetException) orElse Option(m.getCause) getOrElse m
     case m => m
+  }
+
+  class SErrorException(error: SError) extends RuntimeException(error.message) {
   }
 }
 
@@ -1191,8 +1197,8 @@ case class SChartSpace(
 ) extends SExpr {
 }
 object SChartSpace {
-  def apply(name: String, ps: Seq[Particle]): SChartSpace = {
-    val s = Series.shape(name, ps)
+  def apply(name: String, xlabel: String, ylabel: String, ps: Seq[Particle]): SChartSpace = {
+    val s = Series.shape(name, xlabel, ylabel, ps)
     SChartSpace(Space(Vector(s)))
   }
 }
@@ -1205,6 +1211,9 @@ case class SChartSeries(
 object SChartSeries {
   def apply(name: String, ps: Seq[Particle]): SChartSeries =
     SChartSeries(Series.shape(name, ps))
+
+  def apply(name: String, xlabel: String, ylabel: String, ps: Seq[Particle]): SChartSeries =
+    SChartSeries(Series.shape(name, xlabel, ylabel, ps))
 }
 
 // case class SSpace2D(
@@ -1321,6 +1330,9 @@ trait SControl extends SExpr {
   def resolveContext: LispContext
 }
 
+/*
+ * Control object to indicate invisible in a stack.
+ */
 case class SMute(expr: SExpr) extends SExpr {
 }
 

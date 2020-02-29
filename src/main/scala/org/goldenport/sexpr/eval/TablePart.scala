@@ -1,13 +1,13 @@
 package org.goldenport.sexpr.eval
 
-import java.net.URI
+import java.net.{URI, URL}
 import java.io.File
 import org.goldenport.RAISE
 import org.goldenport.io.{ResourceHandle, MimeType}
 import org.goldenport.record.v2.{Schema, Column}
 import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.record.v3.{ITable, Table, Record}
-import org.goldenport.values.NumberRange
+import org.goldenport.values.{NumberRange, EnumRange}
 import org.goldenport.xsv._
 // import org.goldenport.sexpr.eval.chart.Chart
 import org.goldenport.util.StringUtils
@@ -22,16 +22,27 @@ import org.goldenport.sexpr._
  *  version Aug. 18, 2019
  *  version Sep. 19, 2019
  *  version Dec. 29, 2019
- * @version Jan. 26, 2020
+ *  version Jan. 26, 2020
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 trait TablePart { self: LispFunction =>
-  protected final def table_load(u: LispContext, p: URI): SExpr = {
+  protected final def table_load(u: LispContext, p: SUri): STable = table_load(u, p.uri)
+
+  protected final def table_load(u: LispContext, p: URI): STable = {
     val h = u.takeResourceHandle(p)
     table_load(u, h)
   }
 
-  protected final def table_load(u: LispContext, p: ResourceHandle): SExpr = {
+  protected final def table_load(u: LispContext, p: SUrl): STable = table_load(u, p.url)
+
+  protected final def table_load(u: LispContext, p: URL): STable = {
+    val h = u.takeResourceHandle(p)
+    table_load(u, h)
+  }
+
+  // migrate to LispContext
+  protected final def table_load(u: LispContext, p: ResourceHandle): STable = {
     p.getMimeType.collect {
       case MimeType.TEXT_XML => table_load_sexpr(u, p)
       case MimeType.TEXT_HTML => table_load_sexpr(u, p)
@@ -52,23 +63,26 @@ trait TablePart { self: LispFunction =>
     RAISE.notImplementedYetDefect
   }
 
-  protected final def table_load_csv(u: LispContext, p: ResourceHandle): STable = {
-    val config = u.config
-    val strategy = CsvBag.Strategy.default.update(
-      Some(CsvBag.Strategy.default.recordBagStrategy.update(
-        config.getString("csv.codec").map(scalax.io.Codec.apply),
-        None,
-        None,
-        None
-      )),
-      config.getString("csv.name"),
-      config.getString("csv.lineEnd"),
-      config.getBoolean("csv.isForceDoubleQuote")
-    )
-    val csv = CsvBag.loadResource(p, strategy)
-    val table = csv.toTable
-    STable(table)
-  }
+  protected final def table_load_csv(u: LispContext, p: ResourceHandle): STable =
+    u.loadTableCsv(p)
+
+  // protected final def table_load_csv(u: LispContext, p: ResourceHandle): STable = {
+  //   val config = u.config
+  //   val strategy = CsvBag.Strategy.default.update(
+  //     Some(CsvBag.Strategy.default.recordBagStrategy.update(
+  //       config.getString("csv.codec").map(scalax.io.Codec.apply),
+  //       None,
+  //       None,
+  //       None
+  //     )),
+  //     config.getString("csv.name"),
+  //     config.getString("csv.lineEnd"),
+  //     config.getBoolean("csv.isForceDoubleQuote")
+  //   )
+  //   val csv = CsvBag.loadResource(p, strategy)
+  //   val table = csv.toTable
+  //   STable(table)
+  // }
 
   protected final def table_load_tsv(u: LispContext, p: ResourceHandle): STable = {
     val strategy = Xsv.TsvStrategy
@@ -105,29 +119,32 @@ trait TablePart { self: LispFunction =>
     STable(table)
   }
 
-  protected final def table_load_excel(u: LispContext, p: ResourceHandle): STable = {
-    // val config = u.config
-    // val strategy = CsvBag.Strategy.default.update(
-    //   Some(CsvBag.Strategy.default.recordBagStrategy.update(
-    //     config.getString("csv.codec").map(scalax.io.Codec.apply),
-    //     None,
-    //     None,
-    //     None
-    //   )),
-    //   config.getString("csv.name"),
-    //   config.getString("csv.lineEnd"),
-    //   config.getBoolean("csv.isForceDoubleQuote")
-    // )
-    val strategy = RecordBag.Strategy.plainAuto.update(
-      None,
-      None,
-      None,
-      None
-    )
-    val excel = ExcelBag.loadResource(p, strategy)
-    val table = excel.toTable
-    STable(table)
-  }
+  protected final def table_load_excel(u: LispContext, p: ResourceHandle): STable =
+    u.loadTableExcel(p)
+
+  // protected final def table_load_excel(u: LispContext, p: ResourceHandle): STable = {
+  //   // val config = u.config
+  //   // val strategy = CsvBag.Strategy.default.update(
+  //   //   Some(CsvBag.Strategy.default.recordBagStrategy.update(
+  //   //     config.getString("csv.codec").map(scalax.io.Codec.apply),
+  //   //     None,
+  //   //     None,
+  //   //     None
+  //   //   )),
+  //   //   config.getString("csv.name"),
+  //   //   config.getString("csv.lineEnd"),
+  //   //   config.getBoolean("csv.isForceDoubleQuote")
+  //   // )
+  //   val strategy = RecordBag.Strategy.plainAuto.update(
+  //     None,
+  //     None,
+  //     None,
+  //     None
+  //   )
+  //   val excel = ExcelBag.loadResource(p, strategy)
+  //   val table = excel.toTable
+  //   STable(table)
+  // }
 
   protected final def table_save(u: LispContext, uri: SUri, p: SExpr): SExpr =
     uri.getFile.
@@ -165,13 +182,29 @@ trait TablePart { self: LispFunction =>
     table_matrix(t, p.range)
 
   protected final def table_matrix(t: ITable, p: NumberRange): SMatrix =
-    SMatrix(t.matrix.projection(p).toDoubleMatrix)
+    SMatrix(t.matrix.select(p).toDoubleMatrix)
 
   protected final def table_matrix(t: ITable): SMatrix =
     SMatrix(t.matrix.makeDoubleMatrix)
 
-  protected final def table_chart(u: LispContext, p: ITable): SExpr = {
-    val chart = u.feature.chart.buildChart(u, p)
+  protected final def table_select(t: ITable, p: SRange): STable =
+    table_select(t, p.range)
+
+  protected final def table_select(t: ITable, p: NumberRange): STable =
+    STable(t.select(p))
+
+  protected final def table_select(t: ITable, p: Seq[Int]): STable =
+    STable(t.select(NumberRange.createInt(p)))
+
+  protected final def table_regression(u: LispContext, p: ITable): SRecord = {
+    val range = EnumRange(0, 1)
+    val mx = p.matrix.select(range).toDoubleMatrix
+    val (c, s) = u.numericalOperations.simpleRegression(mx)
+    SRecord(Record.data("intercept" -> c, "slope" -> s))
+  }
+
+  protected final def table_chart(u: LispContext, p: ITable, analyzes: List[String]): SExpr = {
+    val chart = u.feature.chart.buildChart(u, p, analyzes)
     u.feature.chart.draw(chart)
   }
 

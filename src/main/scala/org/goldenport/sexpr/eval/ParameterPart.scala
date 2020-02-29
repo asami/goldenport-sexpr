@@ -20,7 +20,8 @@ import Parameters.Cursor
  *  version Jul. 14, 2019
  *  version Aug.  3, 2019
  *  version Sep. 30, 2019
- * @version Nov.  9, 2019
+ *  version Nov.  9, 2019
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -52,6 +53,10 @@ trait ParameterPart { self: LispContext =>
     def records = State[Cursor, ValidationNel[SError, RecordSequence]](_.records)
 
     def powertypeOption[T <: ValueInstance](key: Symbol, powertypeclass: ValueClass[T]) = State[Cursor, ValidationNel[SError, Option[T]]](_.powertypeOption(key, powertypeclass))
+
+    def table(u: LispContext) = State[Cursor, ValidationNel[SError, STable]](_.table(u))
+
+    def propertyStringList(key: Symbol) = State[Cursor, ValidationNel[SError, List[String]]](_.propertyStringList(key))
 
     // case class Cursor(spec: FunctionSpecification, parameters: Parameters) {
     //   def argument1[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, A]) =

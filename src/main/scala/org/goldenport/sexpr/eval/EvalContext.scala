@@ -14,7 +14,8 @@ import org.goldenport.sexpr._
  *  version Sep. 25, 2018
  *  version Oct. 17, 2018
  *  version Feb. 28, 2019
- * @version Mar. 10, 2019
+ *  version Mar. 10, 2019
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 trait EvalContext extends ConfigHelper {
@@ -39,6 +40,8 @@ trait EvalContext extends ConfigHelper {
       case _ => this
     }
   }
+
+  def normalizeSExpr(p: SExpr): Option[SExpr] = None
 
   // obsolate (misleading semantics)
   lazy val args: List[SExpr] = {

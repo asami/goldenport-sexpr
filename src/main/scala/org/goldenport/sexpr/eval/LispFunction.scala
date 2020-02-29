@@ -41,7 +41,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Oct. 11, 2019
  *  version Nov. 30, 2019
  *  version Dec.  2, 2019
- * @version Jan. 30, 2020
+ *  version Jan. 30, 2020
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -108,7 +109,7 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
       val res = u.serviceLogic.fileFetch(url.url)
       log_debug(s"resolve_url: $url => $res")
       val i = FileIncident(start, url, res)
-      response_result(url, res)
+      response_result(u, url, res)
     } catch {
       case NonFatal(e) =>
         log_debug(s"resolve_url: $url => $e")
@@ -127,7 +128,7 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
       val res = u.serviceLogic.fileFetch(url)
       log_debug(s"file_fetch: $url => $res")
       val i = FileIncident(start, url, res)
-      val r = response_result(url, res)
+      val r = response_result(u, url, res)
       u.toResult(r, i)
     } catch {
       case NonFatal(e) =>
@@ -137,32 +138,14 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
     }
   }
 
-  protected final def resolve_urn(u: LispContext, urn: SUrn): SExpr = urn // TODO driver
+  protected final def resolve_urn(u: LispContext, urn: SUrn): SExpr =
+    u.resolveUrn(urn)
 
-  protected final def response_result(url: URL, p: ChunkBag): SExpr = {
-    def string = p.toText
-    def stringorclob = p.getSize.map(size =>
-      if (size > 8192)
-        SString(p.toText)
-      else
-        SClob(p)
-    ).getOrElse(SClob(p))
-    val mime = MimeType.getBySuffix(url)
-    mime.map {
-      case MimeType.TEXT_XSL => SXsl(string)
-      case m => 
-        if (m.isHtml)
-          SHtml(string)
-        else if (m.isXml)
-          SXml(string)
-        else if (m.isJson)
-          SJson(string)
-        else if (m.isText)
-          stringorclob
-        else
-          SBlob(p)
-    }.getOrElse(SBlob(p))
-  }
+  protected final def response_result(
+    u: LispContext,
+    url: URL,
+    p: ChunkBag
+  ): SExpr = u.unmarshall(url, p)
 }
 
 trait ApplyFunction extends LispFunction {
@@ -698,7 +681,7 @@ object LispFunction {
     val specification = FunctionSpecification("history")
     def apply(p: LispContext): LispContext = {
       val params = p.parameters
-      val r = params.getArgument1[Int](specification).map(x => p.takeHistory(x)).getOrElse(p.takeHistory(1))
+      val r = params.getArgument1[Int](specification).map(x => p.takeHistory(x)).getOrElse(p.takeHistory)
       p.toResult(r)
     }
   }
@@ -1186,15 +1169,90 @@ object LispFunction {
     }
   }
 
+  case object TableSelect extends ApplyFunction {
+    val specification = FunctionSpecification("table-select", 2)
+
+    def apply(u: LispContext): LispContext = {
+      val p = u.parameters
+      case class Z( // TODO use Parameters.Cursor. Need to update Cursor feature.
+        tables: Vector[STable] = Vector.empty,
+        xs: Vector[Either[String, Int]] = Vector.empty
+      ) {
+        lazy val table: STable = tables.headOption.map(x =>
+          if (tables.tail.isEmpty)
+            x
+          else
+            RAISE.invalidArgumentFault(s"Too many tables.")
+        ).getOrElse(RAISE.invalidArgumentFault(s"No table."))
+
+        def indexes: Seq[Int] = xs map {
+          case Right(i) => i
+          case Left(s) => _to_index(s)
+        }
+
+        private def _to_index(name: String) = table.schema.columns.indexWhere(_.name == name)
+
+        def +(rhs: SExpr) = rhs match {
+          case m: STable => copy(tables = tables :+ m)
+          case m: SUrl => copy(tables = tables :+ table_load(u, m))
+          case m: SUri => copy(tables = tables :+ table_load(u, m))
+          case m: SRange => _add(m.range.indexes)
+          case m: SInterval => _add(m.interval.toRange.indexes)
+          case m: SNumber => _add(m.asInt)
+          case m: SString => _add(m.string)
+          case m: SAtom => _add(m.name)
+          case m => RAISE.invalidArgumentFault(s"No index: ${m}")
+        }
+
+        private def _add(p: Int) = copy(xs = xs :+ Right(p))
+        private def _add(ps: Seq[Int]) = copy(xs = xs ++ ps.map(Right(_)))
+        private def _add(p: String) = copy(xs = xs :+ Left(p))
+      }
+      val z = p.arguments./:(Z())(_+_)
+      val r = table_select(z.table, z.indexes)
+      u.toResult(r)
+    }
+  }
+
+  case object TableSimpleRegression extends ApplyFunction {
+    val specification = FunctionSpecification("table-simple-regression", 1)
+
+    def apply(u: LispContext): LispContext = {
+      val t = u.parameters.argument1[ITable](specification)
+      val r = table_regression(u, t)
+      u.toResult(r)
+    }
+  }
+
   case object TableChart extends IoFunction {
     val specification = FunctionSpecification("table-chart", 1)
 
-    def apply(u: LispContext): LispContext = {
-      val a = u.parameters.argument1[ITable](specification)
-      val r = table_chart(u, a)
-      u.toResult(r)
+    def apply(p: LispContext): LispContext = {
+      val t = p.parameters.argument1[ITable](specification)
+      val as = p.parameters.getPropertyStringList('analyzes)
+      val r = table_chart(p, t, as)
+      p.toResult(r)
     }
 
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
+
+  // case object TableChart extends IoFunction {
+  //   val specification = FunctionSpecification("table-chart", 1)
+
+  //   def apply(p: LispContext): LispContext = {
+  //     val a = for {
+  //       table <- p.param.table(p)
+  //       analyzes <- p.param.propertyStringList('analyze)
+  //     } yield {
+  //       (table |@| analyzes) { (t, as) =>
+  //         table_chart(p, t, as)
+  //       }
+  //     }
+  //     val r = a.run(p.param.cursor(specification))
+  //     p.toResult(r)
+  //   }
+
+  //   def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  // }
 }
