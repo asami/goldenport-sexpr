@@ -6,38 +6,41 @@ import org.scalatest.junit.JUnitRunner
 import org.junit.runner.RunWith
 import play.api.libs.json._
 import org.goldenport.i18n.I18NContext
+import org.goldenport.record.query.QueryExpression
 import org.goldenport.sexpr._
 
 /*
  * @since   Aug. 17, 2018
  *  version Sep. 20, 2018
- * @version Oct.  1, 2019
+ *  version Oct.  1, 2019
+ * @version Feb. 29, 2020
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
 class LispEvaluatorSpec extends WordSpec with Matchers with GivenWhenThen {
   val config = LispConfig.debug
   val i18n = I18NContext.default // XXX test
+  val query = QueryExpression.Context.default
   "expression" should {
     "flat" in {
-      val evaluator = LispEvaluator(config, i18n)
+      val evaluator = LispEvaluator(config, i18n, query)
       val r = evaluator.eval("(and t nil)")
       r should be(SNil)
     }
     "nest" in {
-      val evaluator = LispEvaluator(config, i18n)
+      val evaluator = LispEvaluator(config, i18n, query)
       val r = evaluator.eval("(and t (or t 1 nil))")
       r should be(SBoolean.TRUE)
     }
     "plus" in {
-      val evaluator = LispEvaluator(config, i18n)
+      val evaluator = LispEvaluator(config, i18n, query)
       val r = evaluator.eval("(+ 1 2 3)")
       r should be(SNumber(6))
     }
   }
   "literal" should {
     "json" in {
-      val evaluator = LispEvaluator(config, i18n)
+      val evaluator = LispEvaluator(config, i18n, query)
       val r = evaluator.eval("""{"a":"b"}""")
       r should be(SJson("""{"a":"b"}"""))
     }

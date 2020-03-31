@@ -1,13 +1,15 @@
 package org.goldenport.sexpr.eval
 
 import org.goldenport.hocon.RichConfig
+import org.goldenport.i18n.I18NContext
 import org.goldenport.record.v3.sql.SqlContext
 import store.StoreFeature
 import chart.ChartFeature
 
 /*
  * @since   Mar. 10, 2019
- * @version Apr.  6, 2019
+ *  version Apr.  6, 2019
+ * @version Mar. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 case class FeatureContext(
@@ -18,6 +20,6 @@ case class FeatureContext(
 object FeatureContext {
   def default = FeatureContext(StoreFeature.empty, ChartFeature.default)
 
-  def create(config: RichConfig, sqlcontext: SqlContext) =
-    FeatureContext(new StoreFeature(config, sqlcontext), ChartFeature.default)
+  def create(config: RichConfig, i18ncontext: I18NContext, sqlcontext: SqlContext) =
+    FeatureContext(new StoreFeature(config, i18ncontext, sqlcontext), ChartFeature.default)
 }

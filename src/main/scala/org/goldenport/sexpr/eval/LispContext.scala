@@ -41,7 +41,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Oct. 31, 2019
  *  version Nov.  8, 2019
  *  version Jan. 19, 2020
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Mar. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart
@@ -407,7 +408,7 @@ object LispContext {
     val resourceManager = new ResourceManager()
     val numericalOperations = config.numericalOperations
     val featurecontext = FeatureContext(
-      new StoreFeature(config.properties, sqlcontext),
+      new StoreFeature(config.properties, i18ncontext, sqlcontext),
       ChartFeature.default
     )
     PlainLispContext(

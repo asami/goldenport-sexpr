@@ -42,7 +42,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Nov. 30, 2019
  *  version Dec.  2, 2019
  *  version Jan. 30, 2020
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Mar.  1, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -800,10 +801,16 @@ object LispFunction {
                 m
             case m: org.w3c.dom.NodeList =>
               val xs = for (i <- 0 until m.getLength) yield m.item(i)
-              if (DomUtils.isTextOnly(xs))
+              if (xs.isEmpty)
+                xs
+              else if (DomUtils.isTextOnly(xs))
                 xs.map(_.getTextContent).mkString
               else if (xs.forall(DomUtils.isTextOnlyChildren))
-                xs.map(_.getTextContent)
+                if (xs.length == 1) {
+                  xs.map(_.getTextContent).mkString
+                } else {
+                  xs.map(_.getTextContent)
+                }
               else
                 m
             case _ => a

@@ -4,7 +4,7 @@ import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
 import org.goldenport.RAISE
 import org.goldenport.record.v2.{Schema}
-import org.goldenport.record.v3.{Record, RecordSequence}
+import org.goldenport.record.v3.{Record, RecordSequence, Table}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.record.query.QueryExpression
@@ -21,7 +21,8 @@ import Parameters.Cursor
  *  version Aug.  3, 2019
  *  version Sep. 30, 2019
  *  version Nov.  9, 2019
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Mar. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -55,6 +56,8 @@ trait ParameterPart { self: LispContext =>
     def powertypeOption[T <: ValueInstance](key: Symbol, powertypeclass: ValueClass[T]) = State[Cursor, ValidationNel[SError, Option[T]]](_.powertypeOption(key, powertypeclass))
 
     def table(u: LispContext) = State[Cursor, ValidationNel[SError, STable]](_.table(u))
+
+    def tableHeader(u: LispContext) = State[Cursor, ValidationNel[SError, Option[Table.HeaderStrategy]]](_.tableHeader(u))
 
     def propertyStringList(key: Symbol) = State[Cursor, ValidationNel[SError, List[String]]](_.propertyStringList(key))
 

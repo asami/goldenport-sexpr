@@ -15,7 +15,8 @@ import org.goldenport.sexpr.eval._
  *  version Jul. 14, 2019
  *  version Aug.  2, 2019
  *  version Oct.  5, 2019
- * @version Nov. 27, 2019
+ *  version Nov. 27, 2019
+ * @version Mar. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 object StoreFunction {
@@ -48,8 +49,9 @@ object StoreFunction {
       val a = for {
         collection <- p.param.storeCollection
         query <- p.param.queryDefault
+        header <- p.param.tableHeader(p)
       } yield {
-        (collection |@| query)(p.feature.store.select(_, _)).valueOr(SError(_))
+        (collection |@| query |@| header)(p.feature.store.select(_, _, _)).valueOr(SError(_))
       }
       val r = a.run(p.param.cursor(specification))
       p.toResult(r._2)
@@ -59,7 +61,7 @@ object StoreFunction {
   }
 
   case object StoreInsert extends SyncIoFunction { // TODO IoFunction and synchronize in the connection context.
-    val specification = FunctionSpecification("store-insert", 1)
+    val specification = FunctionSpecification("store-insert", 2)
 
     def apply(p: LispContext): LispContext = {
       val a = for {
@@ -76,7 +78,7 @@ object StoreFunction {
   }
 
   case object StoreUpdate extends SyncIoFunction { // TODO IoFunction and synchronize in the connection context.
-    val specification = FunctionSpecification("store-update", 1)
+    val specification = FunctionSpecification("store-update", 2)
 
     def apply(p: LispContext): LispContext = {
       val a = for {

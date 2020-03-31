@@ -64,7 +64,8 @@ import org.goldenport.sexpr.eval.spark.SparkDataFrame
  *  version Nov. 30, 2019
  *  version Dec. 30, 2019
  *  version Jan. 30, 2020
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Mar.  1, 2020
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -1486,7 +1487,9 @@ object SExpr {
   }
 
   private def _create_seq(p: Seq[Any]): SExpr =
-    if (p.forall(_.isInstanceOf[JsValue]))
+    if (p.isEmpty)
+      SNil
+    else if (p.forall(_.isInstanceOf[JsValue]))
       SJson(JsArray(p.map(_.asInstanceOf[JsValue]).toVector))
     else if (p.length > 100)
       SVector.create(p.map(create))

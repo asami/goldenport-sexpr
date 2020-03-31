@@ -2,9 +2,12 @@ package org.goldenport.sexpr.eval.store
 
 import org.goldenport.log.Loggable
 import org.goldenport.hocon.RichConfig
+import org.goldenport.i18n.I18NContext
+import org.goldenport.value._
 import org.goldenport.record.store._
 import org.goldenport.record.v2.Schema
 import org.goldenport.record.v3.{Record, RecordSequence}
+import org.goldenport.record.v3.Table.HeaderStrategy
 import org.goldenport.record.v3.sql.SqlContext
 import org.goldenport.sexpr._
 
@@ -14,10 +17,17 @@ import org.goldenport.sexpr._
  *  version May.  9, 2019
  *  version Jul. 21, 2019
  *  version Oct.  7, 2019
- * @version Nov. 27, 2019
+ *  version Nov. 27, 2019
+ * @version Mar. 30, 2020
  * @author  ASAMI, Tomoharu
  */
-class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends Loggable {
+class StoreFeature(
+  val config: RichConfig,
+  val i18nContext: I18NContext,
+  val sqlContext: SqlContext
+) extends Loggable {
+  import StoreFeature._
+
   val factory = new StoreFactory(config, sqlContext)
 
   def getCollection(store: Option[Symbol], collection: Symbol): Option[Collection] =
@@ -27,8 +37,9 @@ class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends L
     collection.get(id).map(SRecord.apply).getOrElse(SError.notFound(s"Store[${collection.name}]", id.show))
   )
 
-  def select(collection: Collection, q: Query): SExpr = SExpr.run {
-    val t = collection.select(q).toTable
+  def select(collection: Collection, q: Query, header: Option[HeaderStrategy]): SExpr = SExpr.run {
+    val a = collection.select(q)
+    val t = header.map(x => a.toTable(i18nContext, x)).getOrElse(a.toTable)
     STable(t)
   }
 
@@ -104,5 +115,5 @@ class StoreFeature(val config: RichConfig, val sqlContext: SqlContext) extends L
 }
 
 object StoreFeature {
-  val empty = new StoreFeature(RichConfig.empty, SqlContext.empty)
+  val empty = new StoreFeature(RichConfig.empty, I18NContext.default, SqlContext.empty)
 }

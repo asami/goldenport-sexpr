@@ -4,7 +4,7 @@ import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
 import org.goldenport.RAISE
 import org.goldenport.record.v2.{Schema}
-import org.goldenport.record.v3.{IRecord, Record, RecordSequence}
+import org.goldenport.record.v3.{IRecord, Record, RecordSequence, Table}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.record.query.QueryExpression
@@ -26,7 +26,8 @@ import org.goldenport.value._
  *  version Nov.  8, 2019
  *  version Dec.  7, 2019
  *  version Jan. 26, 2020
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Mar. 30, 2020
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -103,6 +104,13 @@ case class Parameters(
   def getPropertySymbolList(p: Symbol): List[Symbol] = getPropertyStringList(p).map(Symbol(_))
 
   def isSwitch(p: Symbol): Boolean = switches.contains(p)
+
+  def tableHeader: Option[Table.HeaderStrategy] = getPropertyString(Symbol("table-header")).
+    map {
+      case "name" => Table.HeaderStrategy.name
+      case "label" => Table.HeaderStrategy.label
+      case m => RAISE.invalidArgumentFault(s"Invalid table-header: $m.")
+    }
 
   def map(f: SExpr => SExpr): Parameters = copy(arguments = arguments.map(f))
 
@@ -332,6 +340,13 @@ object Parameters {
       val r = Success(t).toValidationNel
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
+    }
+
+    def tableHeader(u: LispContext): (Cursor, ValidationNel[SError, Option[Table.HeaderStrategy]]) = {
+      val x = parameters.tableHeader
+      val r = Success(x).toValidationNel
+      val nextspec = spec // TODO
+      to_result(nextspec, r)
     }
 
     def propertyStringList(key: Symbol): (Cursor, ValidationNel[SError, List[String]]) = {
