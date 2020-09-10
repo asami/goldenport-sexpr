@@ -16,7 +16,8 @@ import org.goldenport.sexpr._
  *  version Feb. 27, 2019
  *  version Mar.  4, 2019
  *  version Apr. 12, 2019
- * @version Jun.  9, 2019
+ *  version Jun.  9, 2019
+ * @version May. 13, 2020
  * @author  ASAMI, Tomoharu
  */
 case class DynamicServiceFunction(
@@ -48,7 +49,7 @@ case class DynamicServiceFunction(
     val commands = name :: elements.parameters.asStringList
     val env = Map.empty[String, String] // TODO
     val in = p.getPipelineIn.flatMap(_.getInputSource)
-    val result = new ShellCommand(commands, env, None, in, None).run
+    val result = new ShellCommand(commands, env, None, in, None).execute
     val w = SWait(name, { () =>
       val code = result.waitFor
       if (code == 0)

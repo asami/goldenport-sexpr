@@ -43,7 +43,9 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Dec.  2, 2019
  *  version Jan. 30, 2020
  *  version Feb. 29, 2020
- * @version Mar.  1, 2020
+ *  version Mar.  1, 2020
+ *  version May. 13, 2020
+ * @version Jul. 20, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -210,7 +212,7 @@ trait IoFunction extends EffectFunction { // I/O bound
     timeout: Option[Duration]
   ): SExpr = {
     val is = in.flatMap(_.getInputSource)
-    val result = new ShellCommand(commands, env, dir, is, timeout).run
+    val result = new ShellCommand(commands, env, dir, is, timeout).execute
     SWait(name, { () =>
       val code = result.waitFor
       // println(s"execute_shell_command: $commands => $code")
@@ -469,6 +471,11 @@ object LispFunction {
         case m: SCell => m.cdr
         case m => SError(s"Not list: $m")
       }.getOrElse(SError("Empty list"))
+  }
+
+  case object ListFunc extends EvalFunction {
+    val specification = FunctionSpecification("list")
+    def eval(p: Parameters) = SList.create(p.arguments)
   }
 
   case object And extends EvalFunction {

@@ -36,7 +36,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Oct. 14, 2019
  *  version Nov. 16, 2019
  *  version Jan. 30, 2020
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Jul. 20, 2020
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -278,7 +279,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
     Vector(
       EvalOrInvoke, Quote, Setq,
       Pop, Peek, Mute, History, CommandHistory,
-      Car, Cdr, And, Or,
+      Car, Cdr, ListFunc, And, Or,
       Plus, Minus, Multify, Divide,
       Length,
       Inv,
