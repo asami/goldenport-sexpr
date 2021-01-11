@@ -22,7 +22,8 @@ import org.goldenport.sexpr._
  *  version Aug. 31, 2019
  *  version Sep. 24, 2019
  *  version Oct. 31, 2019
- * @version Nov. 16, 2019
+ *  version Nov. 16, 2019
+ * @version Jan.  9, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -46,7 +47,7 @@ object Script {
 
   def parse(config: Config, p: String): Script = {
     // println(s"Script#parse: $p")
-    val lc = LogicalLines.Config(useSingleQuote = false)
+    val lc = LogicalLines.Config.lisp
     val lines = LogicalLines.parse(lc, p)
     // println(s"Script#parse: $lines")
     lines.lines.foldMap(parse(config, _))

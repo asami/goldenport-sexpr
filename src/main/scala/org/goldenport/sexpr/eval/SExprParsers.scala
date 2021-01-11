@@ -1,5 +1,6 @@
 package org.goldenport.sexpr.eval
 
+import scala.concurrent.duration._
 import scala.util.control.NonFatal
 import scala.util.parsing.combinator.Parsers
 import scala.util.parsing.input._
@@ -16,7 +17,8 @@ import org.goldenport.sexpr.util.AnyUtils
  *  version Dec.  6, 2015
  *  version Feb. 27, 2016
  *  version Apr. 20, 2019
- * @version May.  9, 2019
+ *  version May.  9, 2019
+ * @version Oct. 23, 2020
  * @author  ASAMI, Tomoharu
  */
 trait SExprParsers extends Parsers {
@@ -487,6 +489,15 @@ trait SExprParsers extends Parsers {
     p match {
       case m: Seq[_] => m.toVector.flatMap(_to_string_vector)
       case m => Vector(m.toString)
+    }
+
+  protected def get_duration(name: String, params: Seq[(String, Any)]): Option[Duration] =
+    params.filter(_._1 == name).headOption.map {
+      case (k, v) => v match {
+        case m: String => Duration.apply(m)
+        case m: Duration => m
+        case m => Duration.apply(m.toString)
+      }
     }
 
   protected def expr = new Parser[SExpr] {
