@@ -27,7 +27,8 @@ import org.goldenport.value._
  *  version Dec.  7, 2019
  *  version Jan. 26, 2020
  *  version Feb. 29, 2020
- * @version Mar. 30, 2020
+ *  version Mar. 30, 2020
+ * @version Jan. 16, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -40,6 +41,8 @@ case class Parameters(
   def isEmptyArguments: Boolean = arguments.isEmpty
 
   def head: SExpr = argumentOneBased(1)
+
+  def sexpr: SExpr = SList.create(arguments)
 
   def argument(i: Int): SExpr = argumentOneBased(i)
 
@@ -168,6 +171,13 @@ object Parameters {
       )
     }
     ps./:(Z())(_+_).r
+  }
+
+  def fromExpression(ps: SList): Parameters = fromExpression(ps.list)
+
+  def fromExpression(ps: List[SExpr]): Parameters = ps match {
+    case Nil => apply(Nil)
+    case x :: xs => apply(xs)
   }
 
   case class Cursor(feature: FeatureContext, spec: FunctionSpecification, parameters: Parameters) {

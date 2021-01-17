@@ -42,7 +42,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Nov.  8, 2019
  *  version Jan. 19, 2020
  *  version Feb. 29, 2020
- * @version Mar. 30, 2020
+ *  version Mar. 30, 2020
+ * @version Jan. 16, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart
@@ -69,6 +70,13 @@ trait LispContext extends EvalContext with ParameterPart
 
   override def resolve: LispContext = super.resolve.asInstanceOf[LispContext]
 
+  def reducts(ps: List[SExpr]): List[SExpr] = ps.map(reduct)
+
+  def reduct(p: SExpr): SExpr = evaluator(pure(p)).value match {
+    case SMute(expr) => expr
+    case m => m
+  }
+
   def reductForEval: LispContext = reductForEvalDeep
 
   private def reductForEvalShallow: LispContext = {
@@ -78,12 +86,7 @@ trait LispContext extends EvalContext with ParameterPart
         case x :: Nil => this
         case x :: xs =>
           // log.trace(s"reduct input($x): $xs")
-          val a = xs.map(x =>
-            evaluator(pure(x)).value match {
-              case SMute(expr) => expr
-              case m => m
-            }
-          )
+          val a = xs.map(reduct)
           log.trace(s"reduct input($x): $xs => $a")
           pure(SList.create(x +: a))
       }

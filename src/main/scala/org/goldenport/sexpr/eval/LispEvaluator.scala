@@ -37,7 +37,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Nov. 16, 2019
  *  version Jan. 30, 2020
  *  version Feb. 29, 2020
- * @version Jul. 20, 2020
+ *  version Jul. 20, 2020
+ * @version Jan. 16, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -132,7 +133,8 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     apply_lambda_lexical_scope(c, l, args)
 
   protected def apply_lambda_lexical_scope(pc: LispContext, l: SLambda, pargs: List[SExpr]): LispContext = {
-    val (c, args) = _resolve_parameters(pc, l, pargs)
+    val reducted = pc.reducts(pargs)
+    val (c, args) = _resolve_parameters(pc, l, reducted)
     if (l.parameters.length > args.length)
       RAISE.syntaxErrorFault(s"""Missing argument for lambda($l): ${args.mkString(",")}""")
     apply_Lambda(c, l, args)
