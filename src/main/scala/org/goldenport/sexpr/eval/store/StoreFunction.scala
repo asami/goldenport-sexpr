@@ -16,7 +16,8 @@ import org.goldenport.sexpr.eval._
  *  version Aug.  2, 2019
  *  version Oct.  5, 2019
  *  version Nov. 27, 2019
- * @version Mar. 30, 2020
+ *  version Mar. 30, 2020
+ * @version Feb. 25, 2021
  * @author  ASAMI, Tomoharu
  */
 object StoreFunction {
@@ -68,7 +69,7 @@ object StoreFunction {
         collection <- p.param.storeCollection
         rs <- p.param.records
       } yield {
-        (collection |@| rs)(p.feature.store.insert(_, _)).valueOr(SError(_))
+        (collection |@| rs)(p.feature.store.inserts(_, _)).valueOr(SError(_))
       }
       val r = a.run(p.param.cursor(specification))
       p.toResult(r._2)

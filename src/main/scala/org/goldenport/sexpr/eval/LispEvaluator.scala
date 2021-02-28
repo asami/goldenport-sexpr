@@ -38,7 +38,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Jan. 30, 2020
  *  version Feb. 29, 2020
  *  version Jul. 20, 2020
- * @version Jan. 16, 2021
+ *  version Jan. 16, 2021
+ * @version Feb. 25, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -153,29 +154,32 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   }
 
   protected def apply_function(c: LispContext, f: LispFunction): LispContext = {
-    c.log.trace(s"apply_function[${f.name}] ${c.value}")
+    val functionname = f.name
+    val inputlabel = c.value
+    c.log.trace(s"apply_function[${functionname}] ${inputlabel}")
+    c.traceContext.enter(functionname, s"${inputlabel}")
     val r = try {
       f match {
         case m: EvalFunction =>
-          c.log.trace(s"apply_function[Eval:${f.name}] ${c.value}")
+          c.log.trace(s"apply_function[Eval:${functionname}] ${inputlabel}")
           _eval_function(c, m)
         case m: ControlFunction =>
-          c.log.trace(s"apply_function[Control:${f.name}] ${c.value}")
+          c.log.trace(s"apply_function[Control:${functionname}] ${inputlabel}")
           m.apply(c)
         case m: AsyncIoFunction =>
-          c.log.trace(s"apply_function[AsyncIoControl:${f.name}] ${c.value}")
+          c.log.trace(s"apply_function[AsyncIoControl:${functionname}] ${inputlabel}")
           _eval_function(c, m)
         case m: SyncIoFunction =>
-          c.log.trace(s"apply_function[SyncIoControl:${f.name}] ${c.value}")
+          c.log.trace(s"apply_function[SyncIoControl:${functionname}] ${inputlabel}")
           _eval_function(c, m)
         case m: IoFunction =>
-          c.log.trace(s"apply_function[Io:${f.name}] ${c.value}")
+          c.log.trace(s"apply_function[Io:${functionname}] ${inputlabel}")
           c.toResult(SFuture(c, m).start())
         case m: HeavyFunction =>
-          c.log.trace(s"apply_function[Heavy:${f.name}] ${c.value}")
+          c.log.trace(s"apply_function[Heavy:${functionname}] ${inputlabel}")
           c.toResult(SLazy(c, m))
         case m =>
-          c.log.trace(s"apply_function[Misc:${f.name}] ${c.value}")
+          c.log.trace(s"apply_function[Misc:${functionname}] ${inputlabel}")
           _eval_function(c, m)
       }
     } catch {
@@ -183,7 +187,8 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
         val label = f.specification.label(e)
         c.toResult(SError(label, e))
     }
-    c.log.trace(s"apply_function[${f.name}] ${c.value} => $r")
+    c.log.trace(s"apply_function[${functionname}] ${inputlabel} => $r")
+    c.traceContext.leave(functionname, s"${r}")
     r
   }
 
@@ -285,14 +290,15 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       Plus, Minus, Multify, Divide,
       Length,
       Inv,
-      StringInterpolate, StringFormat, StringMessage, StringMessageKey,
-      PathGet, Transform, Xslt,
+      StringInterpolate, StringInterpolateFormat, StringFormat, StringMessage, StringMessageKey,
+      PathGet, Transform, Xslt, Select,
       Fetch, Retry, Sh,
       HttpGet, HttpPost, HttpPut, HttpDelete,
       VectorVerticalFill,
       MatrixHorizontalConcatenate, MatrixLoad, MatrixSave, MatrixChart,
       RecordMake,
-      TableLoad, TableSave, TableMake, TableMatrix, TableSelect, TableSimpleRegression, TableChart
+      TableLoad, TableSave, TableMake, TableMatrix, TableSelect, TableSimpleRegression, TableChart,
+      GenerateId
     ) ++ EmacsLispFunction.functions ++ SchemeFunction.functions ++
     _sql_functions ++ _store_functions ++ _entity_functions ++ _repository_functions ++
     _chart_functions ++

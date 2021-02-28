@@ -9,6 +9,7 @@ import scala.concurrent.duration._
 import org.goldenport.RAISE
 import org.goldenport.log.LogContext
 import org.goldenport.i18n.I18NContext
+import org.goldenport.trace.TraceContext
 import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.v3.sql.SqlContext
 import org.goldenport.record.query.QueryExpression
@@ -43,7 +44,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Jan. 19, 2020
  *  version Feb. 29, 2020
  *  version Mar. 30, 2020
- * @version Jan. 16, 2021
+ *  version Jan. 16, 2021
+ * @version Feb. 25, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart
@@ -59,6 +61,7 @@ trait LispContext extends EvalContext with ParameterPart
   def feature: FeatureContext
   def incident: Option[LibIncident]
   def numericalOperations: INumericalOperations
+  def traceContext: TraceContext
 
   def locale = i18nContext.locale
 
@@ -210,6 +213,11 @@ trait LispContext extends EvalContext with ParameterPart
 
   def createDynamicServiceFunction(name: String): DynamicServiceFunction =
     DynamicServiceFunction.create(name)
+
+  def printString(p: SExpr): String = p match {
+    case SString(s) => s
+    case m => i18nContext.print(m.asObject)
+  }
 
   def format(p: SExpr): SString = SString(formatString(p))
 
@@ -417,6 +425,7 @@ object LispContext {
     PlainLispContext(
       config,
       i18ncontext,
+      TraceContext.create(),
       evaluator,
       defaultServiceLogic,
       defaultStoreLogic,
@@ -434,6 +443,7 @@ object LispContext {
   case class PlainLispContext(
     config: LispConfig,
     i18nContext: I18NContext,
+    traceContext: TraceContext,
     evaluator: LispContext => LispContext,
     serviceLogic: UnitOfWorkLogic,
     storeLogic: StoreOperationLogic,

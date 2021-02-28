@@ -45,7 +45,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Feb. 29, 2020
  *  version Mar.  1, 2020
  *  version May. 13, 2020
- * @version Jul. 20, 2020
+ *  version Jul. 20, 2020
+ * @version Feb. 22, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -75,7 +76,9 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
 
   def apply(p: LispContext): LispContext
 
-  protected final def to_string(u: LispContext, p: SExpr): String = u.formatString(p)
+  protected final def to_string(u: LispContext, p: SExpr): String = u.printString(p)
+
+  protected final def format_string(u: LispContext, p: SExpr): String = u.formatString(p)
 
   protected final def string_interpolate(u: LispContext, ps: Seq[SExpr]): SExpr =
     SString(ps.map(string_interpolate_string(u, _)).mkString)
@@ -86,6 +89,17 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
       case Left(l) => l
     }.mkString
     case m => to_string(u, m)
+  }
+
+  protected final def string_interpolate_format(u: LispContext, ps: Seq[SExpr]): SExpr =
+    SString(ps.map(string_interpolate_format(u, _)).mkString)
+
+  protected final def string_interpolate_format(u: LispContext, p: SExpr): String = p match {
+    case SString(s) => InterpolationParser.parse(s).map {
+      case Right(r) => format_string(u, u.eval(SScript.create(r)))
+      case Left(l) => l
+    }.mkString
+    case m => format_string(u, m)
   }
 
   protected final def string_concatenate(u: LispContext, ps: Seq[SExpr]): SExpr =
@@ -155,8 +169,14 @@ trait ApplyFunction extends LispFunction {
 }
 
 trait EvalFunction extends LispFunction {
+  protected def is_normalize: Boolean = true
+
   def apply(p: LispContext): LispContext = {
-    val r = eval(p.parameters)
+    val params = if (is_normalize)
+      p.parameters.map(normalize_auto(p, _))
+    else
+      p.parameters
+    val r = eval(params)
     p.toResult(r)
   }
 
@@ -615,6 +635,15 @@ object LispFunction {
     }
   }
 
+  case object StringInterpolateFormat extends ApplyFunction {
+    val specification = FunctionSpecification("string-interpolate-format", 1)
+    def apply(u: LispContext): LispContext = {
+      val a = u.parameters.arguments
+      val r = string_interpolate_format(u, a)
+      u.toResult(r)
+    }
+  }
+
   case object StringFormat extends ApplyFunction {
     val specification = FunctionSpecification("string-format", 1)
     def apply(u: LispContext): LispContext = {
@@ -982,6 +1011,41 @@ object LispFunction {
     }
   }
 
+  case object Select extends EvalFunction {
+    val specification = FunctionSpecification("select", 2)
+
+    def eval(p: Parameters) = {
+      val value = p.arguments(1)
+      p.arguments(0) match {
+        case m: SList => _select(m, value)
+        case m => SError.invalidArgumentFault(s"No form: $m")
+      }
+    }
+
+    private def _select(form: SList, p: SExpr) = {
+      val rs = for (x <- form.list) yield x match {
+        case m: SXPath => _select_path(m, p)
+        case m: SString => _select_string(m, p)
+        case m: SAtom => _select_atom(m, p)
+        case m => SError.invalidArgumentFault(s"Invalid form element: $m")
+      }
+      SList.create(rs)
+    }
+
+    private def _select_path(path: SXPath, p: SExpr) = {
+      // val rtype = ReturnType()
+      xpath_traverse_auto(path.path, p)
+    }
+
+    private def _select_string(path: SString, p: SExpr) = {
+      SError.notImplementedYetDefect(s"$path")
+    }
+
+    private def _select_atom(path: SAtom, p: SExpr) = {
+      SError.notImplementedYetDefect(s"$path")
+    }
+  }
+
   case object Retry extends ControlFunction {
     val specification = FunctionSpecification("retry", 1)
 
@@ -1269,4 +1333,17 @@ object LispFunction {
 
   //   def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   // }
+
+  case object GenerateId extends IoFunction {
+    import org.goldenport.values.CompactUuid
+
+    val specification = FunctionSpecification("generate-id", 0)
+
+    def apply(p: LispContext): LispContext = {
+      val r = SString(CompactUuid.generateString)
+      p.toResult(r)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
 }

@@ -18,7 +18,8 @@ import org.goldenport.sexpr._
  *  version Jul. 21, 2019
  *  version Oct.  7, 2019
  *  version Nov. 27, 2019
- * @version Mar. 30, 2020
+ *  version Mar. 30, 2020
+ * @version Feb. 26, 2021
  * @author  ASAMI, Tomoharu
  */
 class StoreFeature(
@@ -29,6 +30,8 @@ class StoreFeature(
   import StoreFeature._
 
   val factory = new StoreFactory(config, sqlContext)
+
+  def getCollection(collection: Symbol): Option[Collection] = factory.getCollection(collection)
 
   def getCollection(store: Option[Symbol], collection: Symbol): Option[Collection] =
     factory.getCollection(store, collection)
@@ -48,7 +51,15 @@ class StoreFeature(
     SString(collection.insert(r).string)
   }
 
-  def insert(collection: Collection, ps: RecordSequence): SExpr = SExpr.run {
+  def inserts(collection: Collection, ps: STable): SExpr = inserts(collection, ps.toRecordSequence)
+
+  def inserts(collection: Collection, ps: Seq[Record]): SExpr = SExpr.run {
+    val rs = to_store_records(ps)
+    val r = collection.inserts(rs)
+    SList.create(r.map(x => SString(x.string)))
+  }
+
+  def inserts(collection: Collection, ps: RecordSequence): SExpr = SExpr.run {
     val rs = to_store_records(ps)
     val r = collection.inserts(rs)
     SList.create(r.map(x => SString(x.string)))
@@ -59,6 +70,9 @@ class StoreFeature(
     collection.update(id, r)
     SBoolean.TRUE
   }
+
+  protected final def to_store_records(ps: Seq[Record]): Seq[Record] =
+    ps.map(to_store_record)
 
   protected final def to_store_records(p: RecordSequence): Seq[Record] =
     p.toRecords.map(to_store_record)
@@ -112,8 +126,26 @@ class StoreFeature(
     factory.defineCollection(store, name, schema)
     SBoolean.TRUE
   }
+
+  def imports(collection: Symbol, data: STable): SExpr = SExpr.run {
+    getCollection(collection).
+      map(c => inserts(c, data)). // TODO more generic
+      getOrElse(SError.notImplementedYetDefect("SoreFeature#imports"))
+  }
+
+  def setup(collection: Symbol, data: STable): SExpr = SExpr.run {
+    getCollection(collection).
+      map { c => // TODO more generic
+        inserts(c, data) match {
+          case m: SError => // TODO
+            create(c)
+            inserts(c, data)
+          case m => m
+        }
+      }.getOrElse(SError.notImplementedYetDefect("SoreFeature#imports"))
+  }
 }
 
 object StoreFeature {
-  val empty = new StoreFeature(RichConfig.empty, I18NContext.default, SqlContext.empty)
+  def now() = new StoreFeature(RichConfig.empty, I18NContext.default, SqlContext.now())
 }

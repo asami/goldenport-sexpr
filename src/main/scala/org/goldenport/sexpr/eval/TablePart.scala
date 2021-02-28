@@ -23,7 +23,8 @@ import org.goldenport.sexpr._
  *  version Sep. 19, 2019
  *  version Dec. 29, 2019
  *  version Jan. 26, 2020
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Feb. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait TablePart { self: LispFunction =>
@@ -169,7 +170,7 @@ trait TablePart { self: LispFunction =>
     case m: SXml => table_make(m)
     case m: SJson => table_make(m)
     case m: SError => m
-    case m => SError.unavailableParameter(m)
+    case m => SError.invalidArgumentFault(s"$m")
   }
 
   protected final def table_make(p: SXml): STable = STable(Table.create(p.dom))

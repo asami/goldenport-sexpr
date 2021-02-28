@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import scala.util.control.NonFatal
 import scala.collection.mutable.{Stack, HashMap}
 import org.goldenport.log.{LogMark, Loggable}, LogMark._
+import org.goldenport.recorder.Recordable
 import org.goldenport.parser.CommandParser
 import org.goldenport.sexpr._
 
@@ -25,10 +26,11 @@ import org.goldenport.sexpr._
  *  version Jul. 25, 2019
  *  version Aug. 31, 2019
  *  version Sep. 16, 2019
- * @version Oct. 31, 2019
+ *  version Oct. 31, 2019
+ * @version Jan. 24, 2021
  * @author  ASAMI, Tomoharu
  */
-trait Evaluator[C <: EvalContext] extends Loggable {
+trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
   override protected def log_Location = InterpreterLocation
   override protected def log_Label = Some("evaluator")
 

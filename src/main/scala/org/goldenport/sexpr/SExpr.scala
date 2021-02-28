@@ -5,7 +5,7 @@ import scala.collection.JavaConverters._
 import scala.util.Try
 import scala.util.control.NonFatal
 import scala.concurrent.{Future, Promise, Await}
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration => ScalaDuration}
 import java.util.Locale
 import java.net.{URL, URI}
 import java.io.File
@@ -14,9 +14,12 @@ import org.joda.time._
 import play.api.libs.json._
 import org.goldenport.RAISE
 import org.goldenport.Strings
+import org.goldenport.parser._
+import org.goldenport.context.{StatusCode, Conclusion}
 import org.goldenport.i18n.{I18NString, I18NTemplate}
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.extension.IWindow
+import org.goldenport.extension.{IDocument => GDocument}
 import org.goldenport.matrix.{IMatrix, Matrix}
 import org.goldenport.record.v2.{Schema, Column, XDouble}
 import org.goldenport.record.v3.{IRecord, Record, ITable, Table, RecordSequence}
@@ -25,6 +28,7 @@ import org.goldenport.record.store.Query
 import org.goldenport.record.chart.{Chart, Space, Series, Particle}
 import org.goldenport.value._
 import org.goldenport.values.{Urn, NumberRange, ValueRange, NumberInterval, DateTimePeriod, Money, Percent}
+import org.goldenport.values.LocalDateTimeInterval
 import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource, UriUtils}
 import org.goldenport.bag.{ChunkBag, StringBag}
 import org.goldenport.xml.dom.{DomParser, DomUtils}
@@ -33,6 +37,7 @@ import org.goldenport.parser.ScriptToken
 import org.goldenport.parser.CommandParser
 import org.goldenport.xsv.Lxsv
 import org.goldenport.util.{StringUtils, AnyRefUtils, AnyUtils}
+import org.goldenport.util.DateTimeUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
 import org.goldenport.sexpr.eval.spark.SparkDataFrame
 // import org.goldenport.sexpr.eval.chart.Chart
@@ -65,7 +70,9 @@ import org.goldenport.sexpr.eval.spark.SparkDataFrame
  *  version Dec. 30, 2019
  *  version Jan. 30, 2020
  *  version Feb. 29, 2020
- * @version Mar.  1, 2020
+ *  version Mar.  1, 2020
+ *  version Jan. 31, 2021
+ * @version Feb. 25, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -215,8 +222,9 @@ trait IDom { self: SExpr =>
 // trait IPath
 // trait IScript
 // TODO Document or Voucher
-trait IDocument extends IRecord
-trait IVoucher extends IRecord
+trait IDocument extends GDocument
+trait IVoucher extends IRecord // obsolated
+trait ISlip extends IRecord
 
 trait IProcess {
   def result: Future[SExpr]
@@ -304,12 +312,18 @@ case class SRational(number: spire.math.Rational) extends SExpr {
   // def print = show
   // def show = number.toString
 }
+object SRational {
+  def apply(numerator: Long, denominator: Long): SRational = SRational(spire.math.Rational(numerator, denominator))
+}
 
 case class SComplex(number: spire.math.Complex[Double]) extends SExpr {
   override lazy val asString = number.toString
   override def getString = Some(asString)
   // def print = show
   // def show = number.toString
+}
+object SComplex {
+  def apply(real: Double, img: Double): SComplex = SComplex(spire.math.Complex(real, img))
 }
 
 case class SBoolean(value: Boolean) extends SExpr {
@@ -330,6 +344,7 @@ object SBoolean {
     s match {
       case SBoolean(false) => false
       case SNil => false
+      case m: SError => false
       case _ => true
     }
   }
@@ -433,13 +448,17 @@ object SLambda {
 }
 
 case class SError(
-  label: Option[String],
-  exception: Option[Throwable],
-  incident: Option[Incident],
-  errors: Option[NonEmptyVector[SError]],
+  conclusion: Conclusion,
+  // label: Option[String] = None,
+  // exception: Option[Throwable] = None,
+  incident: Option[Incident] = None,
+  errors: Option[NonEmptyVector[SError]] = None,
   stdout: Option[SBlob] = None,
   stderr: Option[SBlob] = None
 ) extends SExpr {
+  def exception = conclusion.exception
+  def label = conclusion.message.map(_.en)
+
   def RAISE: Nothing = throw new SError.SErrorException(this)
 
   override def asObject = exception getOrElse this
@@ -474,76 +493,92 @@ case class SError(
   ).flatten.flatten
 }
 object SError {
-  def apply(p: String): SError = SError(Some(p), None, None, None)
-  def apply(p: Throwable): SError = SError(None, Some(_normalize(p)), None, None)
-  def apply(label: String, e: Throwable): SError = SError(Some(label), Some(_normalize(e)), None, None)
+  private def _bad_request = Conclusion.BadRequest
+  private def _unauthorized_request = Conclusion.Unauthorized
+  private def _not_found = Conclusion.NotFound
+  private def _internal_server_error = Conclusion.InternalServerError
+  private def _not_implemented = Conclusion.NotImplemented
+
+  def apply(conclusion: Conclusion, msg: String): SError = SError(conclusion.withMessage(msg))
+  def apply(p: String): SError = SError(_internal_server_error)
+  def apply(p: Throwable): SError = SError(Conclusion.make(p)) // , None, Some(_normalize(p)), None, None)
+  def apply(label: String, e: Throwable): SError = SError(Conclusion.make(e, label)) // , Some(label), Some(_normalize(e)), None, None)
   def apply(start: Long, req: Request, res: Response): SError = {
     val i = RestIncident(start, req, res)
-    SError(None, None, Some(i), None)
+    SError(res.toConclusion, Some(i))
   }
   def apply(start: Long, req: Request, e: Throwable): SError = {
     val i = RestIncident(start, req, _normalize(e))
-    SError(None, Some(e), Some(i), None)
+    SError(Conclusion.make(e), Some(i))
   }
   // def apply(p: Response): SError = SError(None, None, None, Some(p), None)
-  def apply(i: Incident): SError = SError(None, None, Some(i), None)
-  def apply(label: String, i: Incident): SError = SError(Some(label), None, Some(i), None)
+  def apply(i: Incident): SError = SError(_internal_server_error, Some(i))
+  def apply(label: String, i: Incident): SError = SError(_internal_server_error.withMessage(label), Some(i))
   def apply(ps: NonEmptyList[SError]): SError = ps.list match {
     case x :: Nil => x
-    case _ => SError(None, None, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
+    case _ => SError(ps.head.conclusion, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
   }
   def apply(p: String, stdout: SBlob, stderr: SBlob): SError =
-    SError(Some(p), None, None, None, Some(stdout), Some(stderr))
+    SError(_internal_server_error.withMessage(p), None, None, Some(stdout), Some(stderr))
 
   def apply(ps: NonEmptyVector[SError]): SError = {
     if (ps.tail.isEmpty)
       ps.head
     else
-      SError(None, None, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
+      SError(_internal_server_error, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
   }
 
   def create(p: SError, ps: Iterable[SError]): SError = apply(NonEmptyVector(p, ps.toVector))
 
   def invalidArgument(key: String, value: String): SError = {
     val s = s"Invalid parameter '$key': $value"
-    SError(Some(s), None, None, None)
+    SError(_bad_request, s)
   }
 
   def notFound(label: String, key: String): SError = {
     val s = s"${label}: '$key' is not found."
-    SError(Some(s), None, None, None)
+    SError(_not_found, s)
   }
 
   def functionNotFound(p: SAtom): SError = functionNotFound(p.name)
 
   def functionNotFound(name: String): SError = {
     val label = s"Function '$name' is not found."
-    SError(Some(label), None, None, None)
+    SError(_not_found, label)
   }
 
   def bindingNotFound(name: String): SError = {
     val label = s"Binding '$name' is not found."
-    SError(Some(label), None, None, None)
+    SError(_not_found, label)
   }
 
-  def stackUnderflow: SError = SError(Some("Stack underflow."), None, None, None)
+  def stackUnderflow: SError = SError(_internal_server_error, "Stack underflow.")
+
+  def invalidArgumentFault(p: String): SError = SError(_bad_request, p)
 
   def invalidDatatype(name: String, p: SExpr): SError = {
     val label = s"Invalid datatype '$name': $p"
-    SError(Some(label), None, None, None)
+    SError(_bad_request, label)
   }
 
   def unevaluatable(p: SExpr): SError = {
     val label = s"Unevaluatable expression: $p"
-    SError(Some(label), None, None, None)
+    SError(_bad_request, label)
   }
 
-  def unavailableParameter(p: SExpr): SError = {
+  def unevaluatableParameter(p: SExpr): SError = {
     val label = s"Unevaluatable parameter: $p"
-    SError(Some(label), None, None, None)
+    SError(_bad_request, label)
   }
 
   def syntaxError(p: String): SError = SError(p)
+
+  def syntaxError(p: ParseFailure[_]): SError = {
+    val label = p.message
+    SError(_bad_request, label)
+  }
+
+  def notImplementedYetDefect(p: String): SError = SError(_not_implemented, p)
 
   private def _normalize(p: Throwable): Throwable = p match {
     case m: InvocationTargetException => Option(m.getTargetException) orElse Option(m.getCause) getOrElse m
@@ -605,6 +640,13 @@ case class SRegex(regex: scala.util.matching.Regex) extends SExpr {
   // def print = show
   // def show = regex.toString
 }
+object SRegex {
+  import scala.util.matching.Regex
+
+  def create(p: String): SExpr = SExpr.createOrError(SRegex(new Regex(p)))
+
+  def create(p: String, groupnames: Seq[String]): SExpr = SExpr.createOrError(SRegex(new Regex(p, groupnames: _*)))
+}
 
 case class SClob(bag: ChunkBag) extends SExpr {
   override def getString = Some(bag.toText)
@@ -623,13 +665,21 @@ case class SBlob(bag: ChunkBag) extends SExpr {
   // def print = bag.toText
   // def show = "Bag()"
 }
+object SBlob {
+  def text(p: String): SBlob = SBlob(StringBag.create(p))
+}
 
+// literal document format (e.g. smartdox)
 case class SDocument(document: IDocument) extends SExpr { // Bean
   override def getString = Some(document.toString)
   // def print = show
   // def show = document.toString
 }
 
+case class SSlip(slip: ISlip) extends SExpr {
+}
+
+// obsolated
 case class SVoucher(voucher: IVoucher) extends SExpr {
 }
 
@@ -648,6 +698,12 @@ case class SQuery(query: Query) extends SExpr {
   // override def titleInfo = s"${query.columns.length}"
   // override def titleDescription = query.columns.map(_.show).mkString(";")
   // override def descriptionContent = query.columns.map(_.showlong)
+}
+object SQuery {
+  def create(p: String): SQuery = {
+    val q = ???
+    SQuery(q)
+  }
 }
 
 case class SRecord(record: IRecord) extends SExpr {
@@ -700,6 +756,11 @@ case class STable(table: ITable) extends SExpr {
 
   private lazy val _table = table.toTable
   private lazy val _vector = table.toRecordVector.map(SRecord(_))
+
+  def toRecordSequence: RecordSequence = RecordSequence(table.toRecordVector)
+}
+object STable {
+  def data(ps: Seq[Record]): STable = ???
 }
 
 case class SVector(vector: Vector[SExpr]) extends SExpr {
@@ -808,6 +869,8 @@ object SMatrix {
     val e = VectorRowColumnMatrix.create(d)
     SMatrix(e)
   }
+
+  def data(ps: Seq[Seq[Double]]): SMatrix = RAISE.notImplementedYetDefect
 }
 
 case class SDataFrame(dataframe: IDataFrame) extends SExpr {
@@ -857,6 +920,9 @@ case class SUrl(url: java.net.URL) extends SExpr {
   def isHtml = getSuffix.map(_ == SHtml.suffix) getOrElse false
   def isXsl = getSuffix.map(_ == SXsl.suffix) getOrElse false
 }
+object SUrl {
+  def apply(p: String): SUrl = SUrl(new URL(p))
+}
 
 case class SUrn(urn: Urn) extends SExpr {
   override lazy val getString = Some(asString)
@@ -865,6 +931,9 @@ case class SUrn(urn: Urn) extends SExpr {
   def asSUri: SUri = SUri(asUri)
   // def print = show
   // def show = urn.toString
+}
+object SUrn {
+  def apply(p: String): SUrn = SUrn(Urn(p))
 }
 
 case class SUri(uri: URI) extends SExpr {
@@ -877,6 +946,9 @@ case class SUri(uri: URI) extends SExpr {
   def getFile: Option[File] = UriUtils.getFile(uri)
   def getUrl: Option[URL] = UriUtils.getUrl(uri)
   def getUrn: Option[Urn] = UriUtils.getUrn(uri)
+}
+object SUri {
+  def apply(p: String): SUri = SUri(new URI(p))
 }
 
 case class SExpression(expression: String) extends SExpr {
@@ -1089,6 +1161,12 @@ case class SDateTime(datetime: DateTime) extends SExpr {
   // def print = show
   // def show = datetime.toString
 }
+object SDateTime {
+  import DateTimeUtils.jodajst
+
+  def jst(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): SDateTime =
+    SDateTime(new DateTime(year, month, day, hour, minute, second, jodajst))
+}
 
 case class SLocalDateTime(datetime: LocalDateTime) extends SExpr {
   override def asObject = datetime
@@ -1098,6 +1176,10 @@ case class SLocalDateTime(datetime: LocalDateTime) extends SExpr {
   // def print = show
   // def show = datetime.toString
 }
+object SLocalDateTime {
+  def apply(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): SLocalDateTime =
+    SLocalDateTime(new LocalDateTime(year, month, day, hour, minute, second))
+}
 
 case class SLocalDate(date: LocalDate) extends SExpr {
   override def asObject = date
@@ -1105,12 +1187,18 @@ case class SLocalDate(date: LocalDate) extends SExpr {
   // def print = show
   // def show = date.toString
 }
+object SLocalDate {
+  def apply(y: Int, m: Int, d: Int): SLocalDate = SLocalDate(new LocalDate(y, m, d))
+}
 
 case class SLocalTime(time: LocalTime) extends SExpr {
   override def asObject = time
   override def getString = Some(time.toString)
   // def print = show
   // def show = time.toString
+}
+object SLocalTime {
+  def apply(h: Int, m: Int, s: Int): SLocalTime = SLocalTime(new LocalTime(h, m, s))
 }
 
 case class SMonthDay(monthday: MonthDay) extends SExpr {
@@ -1121,6 +1209,9 @@ case class SMonthDay(monthday: MonthDay) extends SExpr {
 
   def month: Int = monthday.getMonthOfYear
   def day: Int = monthday.getDayOfMonth
+}
+object SMonthDay {
+  def apply(m: Int, d: Int): SMonthDay = SMonthDay(new MonthDay(m, d))
 }
 
 /*
@@ -1134,6 +1225,19 @@ case class SDateTimeInterval(interval: DateTimePeriod) extends SExpr {
   override def getString = Some(interval.toString)
   // def print = show
   // def show = interval.toString
+}
+object SDateTimeInterval {
+  def create(p: String): SDateTimeInterval = SDateTimeInterval(DateTimePeriod.parse(p))
+}
+
+case class SLocalDateTimeInterval(interval: LocalDateTimeInterval) extends SExpr {
+  override def asObject = interval
+  override def getString = Some(interval.toString)
+  // def print = show
+  // def show = interval.toString
+}
+object SLocalDateTimeInterval {
+  def create(p: String): SLocalDateTimeInterval = SLocalDateTimeInterval(LocalDateTimeInterval.create(p))
 }
 
 /*
@@ -1149,7 +1253,15 @@ case class SDuration(duration: Duration) extends SExpr {
   // def show = duration.toString
 }
 object SDuration {
-  def apply(p: org.joda.time.Duration): SDuration = SDuration(Duration.fromNanos(p.getMillis))
+  import org.goldenport.util.DurationUtils
+
+  def apply(p: ScalaDuration): SDuration = SDuration(new Duration(p.toMillis))
+
+  def parse(p: String): ParseResult[SDuration] = DurationUtils.parseJoda(p).map(SDuration.apply)
+
+  def create(p: String): SDuration = parse(p).take
+
+  def hour(h: Int): SDuration = SDuration(DurationUtils.hour(h))
 }
 
 /*
@@ -1164,6 +1276,15 @@ case class SPeriod(period: Period) extends SExpr {
   // def print = show
   // def show = period.toString
 }
+object SPeriod {
+  import org.goldenport.util.PeriodUtils
+
+  def parse(p: String): ParseResult[SPeriod] = PeriodUtils.parse(p).map(SPeriod.apply)
+
+  def create(p: String): SPeriod = parse(p).take
+
+  def yearMonthDay(y: Int, m: Int, d: Int): SPeriod = SPeriod(PeriodUtils.yearMonthDay(y, m, d))
+}
 
 case class SMoney(money: Money) extends SExpr {
   override def asObject = money
@@ -1171,12 +1292,19 @@ case class SMoney(money: Money) extends SExpr {
   // def print = show
   // def show = currency.toString
 }
+object SMoney {
+  def doller(p: Int): SMoney = RAISE.notImplementedYetDefect
+  def yen(p: Int): SMoney = RAISE.notImplementedYetDefect
+}
 
 case class SPercent(percent: Percent) extends SExpr {
   override def asObject = percent
   override def getString = Some(percent.toString)
   // def print = show
   // def show = percent.toString
+}
+object SPercent {
+  def apply(p: Double): SPercent = RAISE.notImplementedYetDefect
 }
 
 case class SUnit(unit: String) extends SExpr {
@@ -1370,7 +1498,7 @@ case class SWait(label: String, body: () => LispContext) extends SControl {
   def resolveContext: LispContext = body()
 }
 object SWait {
-  def apply(label: String, p: Future[LispContext], timeout: Duration): SWait = {
+  def apply(label: String, p: Future[LispContext], timeout: ScalaDuration): SWait = {
     new SWait(label, () => Await.result(p, timeout))
   }
 }
@@ -1531,6 +1659,22 @@ object SExpr {
     case m: SUrn => createAuto(m)
     case m: SUri => createAuto(m)
     case m => m
+  }
+
+  def createOrError[T <: SExpr](p: => T): SExpr = try {
+    p
+  } catch {
+    case NonFatal(e) => SError(e)
+  }
+
+  def parseOrError[T <: SExpr](p: => ParseResult[T]): SExpr = try {
+    p match {
+      case ParseSuccess(ast, ws) => ast
+      case EmptyParseResult() => SError("Empty")
+      case m: ParseFailure[_] => SError(m.message)
+    }
+  } catch {
+    case NonFatal(e) => SError(e)
   }
 
   def getKeyword[T](expr: SExpr, keyword: String)(implicit pf: PartialFunction[SExpr, T]): Option[T] = {

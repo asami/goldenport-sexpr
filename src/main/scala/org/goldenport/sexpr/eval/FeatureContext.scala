@@ -9,7 +9,8 @@ import chart.ChartFeature
 /*
  * @since   Mar. 10, 2019
  *  version Apr.  6, 2019
- * @version Mar. 30, 2020
+ *  version Mar. 30, 2020
+ * @version Feb. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 case class FeatureContext(
@@ -18,7 +19,7 @@ case class FeatureContext(
 )
 
 object FeatureContext {
-  def default = FeatureContext(StoreFeature.empty, ChartFeature.default)
+  def now() = FeatureContext(StoreFeature.now(), ChartFeature.default)
 
   def create(config: RichConfig, i18ncontext: I18NContext, sqlcontext: SqlContext) =
     FeatureContext(new StoreFeature(config, i18ncontext, sqlcontext), ChartFeature.default)

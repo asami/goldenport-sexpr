@@ -23,7 +23,8 @@ import org.goldenport.sexpr._
  *  version Sep. 24, 2019
  *  version Oct. 31, 2019
  *  version Nov. 16, 2019
- * @version Jan.  9, 2021
+ *  version Jan. 24, 2021
+ * @version Feb. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -63,7 +64,17 @@ object Script {
 
   def parse(line: LogicalLine): Script = parse(Config.default, line)
 
+  def parseWithoutMetaCommand(p: String): Script = parse(Config.raw, p)
+
+  def parseWithoutMetaCommand(config: Config, p: String): Script = parse(config, p)
+
   def parse(config: Config, line: LogicalLine): Script =
+    if (config.isMetaCommand)
+      _parse_with_metacommand(config, line)
+    else
+      _parse(config, line)
+
+  private def _parse_with_metacommand(config: Config, line: LogicalLine): Script =
     if (line.text.startsWith(": ")) {
       val a = _parse(config, LogicalLine(line.text.substring(1).trim))
       a.expressions.headOption.
@@ -88,15 +99,37 @@ object Script {
 
   def parseDebug(p: String): Script = parse(Config.debug, p)
 
+  trait StringLiteralTokenizer {
+    def name: String
+    def literal(text: String): SExpr
+    final def makeLiteral(kind: String, text: String): Option[SExpr] =
+      if (kind == name)
+        Some(literal(text))
+      else
+        None
+  }
+
   case class Config(
     isDebug: Boolean = true,
-    isLocation: Boolean = true
+    isLocation: Boolean = true,
+    isMetaCommand: Boolean = true,
+    stringTokenizers: Vector[StringLiteralTokenizer] = Vector.empty
   ) extends ParseConfig {
+    def addStringLiteralTokenizers(p: StringLiteralTokenizer, ps: StringLiteralTokenizer*): Config =
+      addStringLiteralTokenizers(p +: ps)
+
+    def addStringLiteralTokenizers(ps: Seq[StringLiteralTokenizer]): Config =
+      copy(stringTokenizers = stringTokenizers ++ ps)
+
     def isAutoFunction(name: String): Boolean = false
+
+    def makeLiteral(kind: String, p: String): Option[SExpr] =
+      stringTokenizers.toStream.flatMap(_.makeLiteral(kind, p)).headOption
   }
   object Config {
     val default = Config()
     val debug = default.copy(isDebug = true)
+    val raw = default.copy(isMetaCommand = false)
   }
 
   trait ScriptParseState extends LogicalTokenReaderWriterState[Config, Script] with Loggable {
@@ -117,6 +150,7 @@ object Script {
         case m: SingleQuoteToken => handle_Single_Quote(config, m)
         case m: LiteralToken => handle_Literal(config, m)
         case m: EmptyToken => handle_Empty(config, m)
+        case m: CommentToken => handle_Comment(config, m)
       }
 
     protected def handle_state_in_expression(config: Config, token: LogicalToken): ScriptParseState =
@@ -189,6 +223,9 @@ object Script {
     protected def handle_Empty(config: Config, t: EmptyToken): Transition = 
       (ParseMessageSequence.empty, ParseResult.empty, this)
 
+    protected def handle_Comment(config: Config, t: CommentToken): Transition = 
+      (ParseMessageSequence.empty, ParseResult.empty, this)
+
     protected def literal_State(config: Config, t: LiteralToken): ScriptParseState =
       t match {
         case m: AtomToken =>
@@ -205,7 +242,7 @@ object Script {
                 SAtom(name)
           }
           add_Sexpr(config, a)
-        case m: StringToken => add_Sexpr(config, _from_string(m))
+        case m: StringToken => add_Sexpr(config, _from_string(config, m))
         case m: BooleanToken => add_Sexpr(config, SBoolean(m.b))
         case m: NumberToken => add_Sexpr(config, SNumber(m.n))
         case m: RationalToken => add_Sexpr(config, SRational(m.n)) // SNumber
@@ -220,6 +257,7 @@ object Script {
         case m: PeriodToken => add_Sexpr(config, SPeriod(m.period))
         case m: DurationToken => add_Sexpr(config, SDuration(m.duration))
         case m: DateTimeIntervalToken => add_Sexpr(config, SDateTimeInterval(m.interval))
+        case m: LocalDateTimeIntervalToken => add_Sexpr(config, SLocalDateTimeInterval(m.interval))
         case m: UrlToken => add_Sexpr(config, SUrl(m.url))
         case m: UriToken => add_Sexpr(config, SUri(m.uri))
         case m: UrnToken => add_Sexpr(config, SUrn(m.urn))
@@ -238,10 +276,10 @@ object Script {
         case m: LxsvToken => add_Sexpr(config, SRecord.create(m.lxsv))
       }
 
-    private def _from_string(p: StringToken) =
+    private def _from_string(config: Config, p: StringToken) =
       p.prefix.map {
         case "s" => SList(SAtom("string-interpolate"), SString(p.text))
-        // case "f" => SList(SAtom("string-format"), SString(p.text))
+        case "f" => SList(SAtom("string-interpolate-format"), SString(p.text))
         case "record" => SRecord(_to_record(p.text))
         case "lxsv" => SLxsv(Lxsv.create(p.text))
         case "regex" => SRegex(new scala.util.matching.Regex(p.text))
@@ -262,7 +300,7 @@ object Script {
         // case "currency" => SCurrency(p.text)
         // case "percent" => SPercent(p.text)
         // case "unit" => SUnit(p.text)
-        case _ => SString(p.text)
+        case m => config.makeLiteral(m, p.text) getOrElse SError.syntaxError(s"""Unknown prefix: $m""")
       }.getOrElse(SString(p.text))
 
     private def _to_record(p: String): IRecord =
