@@ -6,7 +6,8 @@ import LispFunction.PathGet._
 
 /*
  * @since   May. 25, 2019
- * @version May. 26, 2019
+ *  version May. 26, 2019
+ * @version Mar.  6, 2021
  * @author  ASAMI, Tomoharu
  */
 trait XPathPart { self: LispFunction =>
@@ -19,7 +20,8 @@ trait XPathPart { self: LispFunction =>
     val rt = ReturnType.nodeType
     traverse(rt, SXPath(xpath), target) match {
       case m: SXml => m
-      case m => RAISE.noReachDefect
+      case SNil => SError.notFound("XPath", xpath).RAISE
+      case m => RAISE.noReachDefect(m.toString)
     }
   }
 }

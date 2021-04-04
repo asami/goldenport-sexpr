@@ -4,9 +4,11 @@ import java.net.{URI, URL}
 import java.io.File
 import org.goldenport.RAISE
 import org.goldenport.io.{ResourceHandle, MimeType}
+import org.goldenport.xml.xpath.XPathPredicate
 import org.goldenport.record.v2.{Schema, Column}
 import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.record.v3.{ITable, Table, Record}
+import org.goldenport.record.v3.Table.CreateHtmlStrategy
 import org.goldenport.values.{NumberRange, EnumRange}
 import org.goldenport.xsv._
 // import org.goldenport.sexpr.eval.chart.Chart
@@ -24,7 +26,8 @@ import org.goldenport.sexpr._
  *  version Dec. 29, 2019
  *  version Jan. 26, 2020
  *  version Feb. 29, 2020
- * @version Feb. 20, 2021
+ *  version Feb. 20, 2021
+ * @version Mar.  8, 2021
  * @author  ASAMI, Tomoharu
  */
 trait TablePart { self: LispFunction =>
@@ -32,22 +35,22 @@ trait TablePart { self: LispFunction =>
 
   protected final def table_load(u: LispContext, p: URI): STable = {
     val h = u.takeResourceHandle(p)
-    table_load(u, h)
+    table_load(u, h, None) // TODO
   }
 
   protected final def table_load(u: LispContext, p: SUrl): STable = table_load(u, p.url)
 
   protected final def table_load(u: LispContext, p: URL): STable = {
     val h = u.takeResourceHandle(p)
-    table_load(u, h)
+    table_load(u, h, None) // TODO
   }
 
   // migrate to LispContext
-  protected final def table_load(u: LispContext, p: ResourceHandle): STable = {
+  protected final def table_load(u: LispContext, p: ResourceHandle, xpathpred: Option[XPathPredicate]): STable = {
     p.getMimeType.collect {
-      case MimeType.TEXT_XML => table_load_sexpr(u, p)
-      case MimeType.TEXT_HTML => table_load_sexpr(u, p)
-      case MimeType.APPLICATION_JSON => table_load_sexpr(u, p)
+      case MimeType.TEXT_XML => table_load_sexpr(u, p, xpathpred)
+      case MimeType.TEXT_HTML => table_load_sexpr(u, p, xpathpred)
+      case MimeType.APPLICATION_JSON => table_load_sexpr(u, p, xpathpred)
       case MimeType.TEXT_CSV => table_load_csv(u, p)
       case MimeType.TEXT_TSV => table_load_tsv(u, p)
       case MimeType.TEXT_XSV => table_load_xsv(u, p)
@@ -58,10 +61,12 @@ trait TablePart { self: LispFunction =>
     }.getOrElse(RAISE.invalidArgumentFault(s"Unknown file type: $p"))
   }
 
-  protected final def table_load_sexpr(u: LispContext, p: ResourceHandle): STable = {
-    // val sexpr = resolve_uri(u, p)
-    // table_make(u, sexpr)
-    RAISE.notImplementedYetDefect
+  protected final def table_load_sexpr(u: LispContext, p: ResourceHandle, xpathpred: Option[XPathPredicate]): STable = {
+    val sexpr = resolve_resource(u, p)
+    table_make(u, sexpr, xpathpred) match {
+      case m: STable => m
+      case m => RAISE.notImplementedYetDefect
+    }
   }
 
   protected final def table_load_csv(u: LispContext, p: ResourceHandle): STable =
@@ -164,18 +169,31 @@ trait TablePart { self: LispFunction =>
       SBoolean.TRUE
     }
 
-  protected final def table_make(u: LispContext, p: SExpr): SExpr = p match {
+  protected final def table_make(
+    u: LispContext,
+    p: SExpr,
+    xpredicate: Option[XPathPredicate],
+    strategy: CreateHtmlStrategy = CreateHtmlStrategy.NaturalStrategy
+  ): SExpr = p match {
     case m: STable => m
-    case m: SHtml => table_make_html(xpath_traverse_node("//table", m))
+    case m: SHtml =>
+      val xpath = xpredicate.map(_xpath).getOrElse(_xpath())
+      table_make_html(strategy, xpath_traverse_node(xpath, m))
     case m: SXml => table_make(m)
     case m: SJson => table_make(m)
     case m: SError => m
     case m => SError.invalidArgumentFault(s"$m")
   }
 
+  private def _xpath(xpredicate: XPathPredicate) = {
+    s"//*[translate(local-name(), 'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ')='TABLE'${xpredicate.andExpression}]"
+  }
+
+  private def _xpath() = "//*[translate(local-name(), 'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ')='TABLE']"
+
   protected final def table_make(p: SXml): STable = STable(Table.create(p.dom))
 
-  protected final def table_make_html(p: SXml): STable = STable(Table.createHtml(p.dom))
+  protected final def table_make_html(strategy: CreateHtmlStrategy, p: SXml): STable = STable(Table.createHtml(strategy, p.dom))
 
   protected final def table_make(p: SJson): STable = STable(Table.create(p.json))
 

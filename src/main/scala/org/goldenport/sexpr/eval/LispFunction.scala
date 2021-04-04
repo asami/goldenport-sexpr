@@ -6,6 +6,7 @@ import scala.util.control.NonFatal
 import scala.concurrent.duration.Duration
 import scala.concurrent.duration._
 import java.io.File
+import java.nio.charset.Charset
 import java.net.{URL, URI}
 import play.api.libs.json._
 import org.goldenport.Strings
@@ -14,10 +15,13 @@ import org.goldenport.record.v3.{Record, ITable}
 import org.goldenport.record.unitofwork._
 import org.goldenport.record.unitofwork.UnitOfWork._
 import org.goldenport.record.http.{Request, Response}
+import org.goldenport.record.v3.Table.CreateHtmlStrategy
 import org.goldenport.io.{MimeType, UrlUtils, Retry => LibRetry}
+import org.goldenport.io.ResourceHandle
 import org.goldenport.matrix.{IMatrix, Matrix}
 import org.goldenport.bag.{EmptyBag, ChunkBag, StringBag}
 import org.goldenport.xml.dom.DomUtils
+import org.goldenport.xml.xpath.XPathPredicate
 import org.goldenport.log.Loggable
 import org.goldenport.cli.ShellCommand
 import org.goldenport.incident.{Incident => LibIncident}
@@ -46,7 +50,9 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Mar.  1, 2020
  *  version May. 13, 2020
  *  version Jul. 20, 2020
- * @version Feb. 22, 2021
+ *  version Feb. 22, 2021
+ *  version Mar. 21, 2021
+ * @version Apr.  4, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -114,29 +120,49 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
   protected final def string_message_key(u: LispContext, key: String, ps: Seq[SExpr]): SExpr =
     SString(u.formatMessageKey(key, ps))
 
+  protected final def normalize_auto_urx(u: LispContext, p: SExpr): SExpr = p match {
+    case m: SString =>
+      val x = SUri.makeUrxOption(m.string)
+      x.map(normalize_auto(u, _)).getOrElse(normalize_auto(u, p))
+    case _ => normalize_auto(u, p)
+  }
+
   protected final def normalize_auto(u: LispContext, p: SExpr): SExpr = p match {
     case m: SUrl => resolve_url(u, m)
+    case m: SUri => resolve_uri(u, m)
     case m: SUrn => resolve_urn(u, m)
     case _ => SExpr.normalizeAuto(p)
   }
 
   protected final def resolve_url(u: LispContext, url: SUrl): SExpr = {
-    val start = System.currentTimeMillis
-    try {
-      val res = u.serviceLogic.fileFetch(url.url)
-      log_debug(s"resolve_url: $url => $res")
-      val i = FileIncident(start, url, res)
-      response_result(u, url, res)
-    } catch {
-      case NonFatal(e) =>
-        log_debug(s"resolve_url: $url => $e")
-        val i = FileIncident(start, url, e)
-        SError(i)
-    }
+    val r = url_get(u, url)
+    r.value
   }
 
+  // protected final def resolve_url(u: LispContext, url: SUrl): SExpr = {
+  //   val start = System.currentTimeMillis
+  //   try {
+  //     val res = u.serviceLogic.fileFetch(url.url)
+  //     log_debug(s"resolve_url: $url => $res")
+  //     val i = FileIncident(start, url, res)
+  //     response_result(u, url, res)
+  //   } catch {
+  //     case NonFatal(e) =>
+  //       log_debug(s"resolve_url: $url => $e")
+  //       val i = FileIncident(start, url, e)
+  //       SError(i)
+  //   }
+  // }
+
   protected final def resolve_uri(u: LispContext, uri: URI): SExpr = {
-    RAISE.notImplementedYetDefect
+    // TODO URN and well known URI
+    val url = SUrl(uri.toURL)
+    resolve_url(u, url)
+  }
+
+  protected final def resolve_resource(u: LispContext, p: ResourceHandle): SExpr = {
+    val url = SUrl(p.url)
+    resolve_url(u, url)
   }
 
   protected final def file_fetch(u: LispContext, url: URL): LispContext = {
@@ -158,120 +184,23 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
   protected final def resolve_urn(u: LispContext, urn: SUrn): SExpr =
     u.resolveUrn(urn)
 
-  protected final def response_result(
+  protected final def uri_save(
     u: LispContext,
-    url: URL,
-    p: ChunkBag
-  ): SExpr = u.unmarshall(url, p)
-}
-
-trait ApplyFunction extends LispFunction {
-}
-
-trait EvalFunction extends LispFunction {
-  protected def is_normalize: Boolean = true
-
-  def apply(p: LispContext): LispContext = {
-    val params = if (is_normalize)
-      p.parameters.map(normalize_auto(p, _))
-    else
-      p.parameters
-    val r = eval(params)
-    p.toResult(r)
-  }
-
-  def eval(p: Parameters): SExpr
-}
-
-trait ResolvedParametersFeature { self: EvalFunction =>
-  override def apply(p: LispContext): LispContext = {
-    val ps = p.parameters.map(normalize_auto(p, _))
-    val r = eval(ps)
-    p.toResult(r)
-  }
-}
-
-trait ControlFunction extends LispFunction {
-}
-
-trait HeavyFunction extends LispFunction { // CPU bound
-}
-
-trait EffectFunction extends LispFunction {
-  def applyEffect(p: LispContext): UnitOfWorkFM[LispContext]
-}
-
-trait IoFunction extends EffectFunction { // I/O bound
-  protected final def execute_shell_command(
-    p: LispContext
+    uri: URI,
+    p: SExpr,
+    charset: Option[Charset] = None
   ): SExpr = {
-    val elements = p.evalElements
-    val name = elements.functionName
-    val commands = name :: elements.parameters.asStringList
-    val env = Map.empty[String, String] // TODO
-    val in = p.getPipelineIn
-    execute_shell_command(p, commands, env, None, in, None)
+    val res = p.toBag match {
+      case Right(c) =>
+        val cs = charset getOrElse u.i18nContext.charset
+        u.serviceLogic.fileSave(uri, c, cs)
+        c
+      case Left(b) =>
+        u.serviceLogic.fileSave(uri, b)
+        b
+    }
+    response_result(u, SUrl(uri.toURL), res)
   }
-
-  protected final def execute_shell_command(
-    u: LispContext,
-    commands: String
-  ): SExpr = execute_shell_command(u, Strings.totokens(commands, " "))
-
-  protected final def execute_shell_command(
-    u: LispContext,
-    commands: Seq[String]
-  ): SExpr = execute_shell_command(u, commands, Map.empty, None, None, None)
-
-  protected final def execute_shell_command(
-    u: LispContext,
-    commands: Seq[String],
-    env: Map[String, String],
-    dir: Option[File],
-    in: Option[SExpr],
-    timeout: Option[Duration]
-  ): SExpr = {
-    val is = in.flatMap(_.getInputSource)
-    val result = new ShellCommand(commands, env, dir, is, timeout).execute
-    SWait(name, { () =>
-      val code = result.waitFor
-      // println(s"execute_shell_command: $commands => $code")
-      if (code == 0)
-        _success(u, result)
-      else
-        _failure(u, result)
-    })
-  }
-
-  private def _success(c: LispContext, p: ShellCommand.Result) = {
-    val (props, stdout, _) = _properties(p)
-    c.toResult(stdout, props)
-  }
-
-  private def _failure(c: LispContext, p: ShellCommand.Result) = {
-    val (props, stdout, stderr) = _properties(p)
-    val aux = stderr.getString.flatMap(s =>
-      Strings.tolines(s).find(_.nonEmpty).map(x => s": $x")
-    ).getOrElse("")
-    val msg = s"Shell Command(${p.waitFor})${aux}"
-    val error = SError(msg, stdout, stderr)
-    c.toResult(error, props)
-  }
-
-  private def _properties(p: ShellCommand.Result): (Record, SBlob, SBlob) = {
-    val retval = SNumber(p.waitFor)
-    val stdout = SBlob(p.stdout)
-    val stderr = SBlob(p.stderr)
-    val a = Record.data(
-      "return-code" -> retval,
-      "stdout" -> stdout,
-      "stderr" -> stderr
-    )
-    (a, stdout, stderr)
-  }
-
-  protected final def is_implicit_http_communication(u: LispContext): Boolean =
-    u.bindings.getUrl("http.baseurl").isDefined
 
   protected final def url_get(u: LispContext, url: URL): LispContext = {
     url.getProtocol match {
@@ -433,6 +362,122 @@ trait IoFunction extends EffectFunction { // I/O bound
         SBlob(binary)
     ).getOrElse(getbinary.map(SBlob.apply) getOrElse SNil)
   }
+
+  protected final def response_result(
+    u: LispContext,
+    url: URL,
+    p: ChunkBag
+  ): SExpr = u.unmarshall(url, p)
+}
+
+trait ApplyFunction extends LispFunction {
+}
+
+trait EvalFunction extends LispFunction {
+  protected def is_normalize: Boolean = true
+
+  def apply(p: LispContext): LispContext = {
+    val resolved = p.parameters // specification.resolve(p.parameters)
+    val params = if (is_normalize)
+      resolved.map(normalize_auto(p, _))
+    else
+      resolved
+    val r = eval(params)
+    p.toResult(r)
+  }
+
+  def eval(p: Parameters): SExpr
+}
+
+trait ResolvedParametersFeature { self: EvalFunction =>
+  override def apply(p: LispContext): LispContext = {
+    val ps = p.parameters.map(normalize_auto(p, _))
+    val r = eval(ps)
+    p.toResult(r)
+  }
+}
+
+trait ControlFunction extends LispFunction {
+}
+
+trait HeavyFunction extends LispFunction { // CPU bound
+}
+
+trait EffectFunction extends LispFunction {
+  def applyEffect(p: LispContext): UnitOfWorkFM[LispContext]
+}
+
+trait IoFunction extends EffectFunction { // I/O bound
+  protected final def execute_shell_command(
+    p: LispContext
+  ): SExpr = {
+    val elements = p.evalElements
+    val name = elements.functionName
+    val commands = name :: elements.parameters.asStringList
+    val env = Map.empty[String, String] // TODO
+    val in = p.getPipelineIn
+    execute_shell_command(p, commands, env, None, in, None)
+  }
+
+  protected final def execute_shell_command(
+    u: LispContext,
+    commands: String
+  ): SExpr = execute_shell_command(u, Strings.totokens(commands, " "))
+
+  protected final def execute_shell_command(
+    u: LispContext,
+    commands: Seq[String]
+  ): SExpr = execute_shell_command(u, commands, Map.empty, None, None, None)
+
+  protected final def execute_shell_command(
+    u: LispContext,
+    commands: Seq[String],
+    env: Map[String, String],
+    dir: Option[File],
+    in: Option[SExpr],
+    timeout: Option[Duration]
+  ): SExpr = {
+    val is = in.flatMap(_.getInputSource)
+    val result = new ShellCommand(commands, env, dir, is, timeout).execute
+    SWait(name, { () =>
+      val code = result.waitFor
+      // println(s"execute_shell_command: $commands => $code")
+      if (code == 0)
+        _success(u, result)
+      else
+        _failure(u, result)
+    })
+  }
+
+  private def _success(c: LispContext, p: ShellCommand.Result) = {
+    val (props, stdout, _) = _properties(p)
+    c.toResult(stdout, props)
+  }
+
+  private def _failure(c: LispContext, p: ShellCommand.Result) = {
+    val (props, stdout, stderr) = _properties(p)
+    val aux = stderr.getString.flatMap(s =>
+      Strings.tolines(s).find(_.nonEmpty).map(x => s": $x")
+    ).getOrElse("")
+    val msg = s"Shell Command(${p.waitFor})${aux}"
+    val error = SError(msg, stdout, stderr)
+    c.toResult(error, props)
+  }
+
+  private def _properties(p: ShellCommand.Result): (Record, SBlob, SBlob) = {
+    val retval = SNumber(p.waitFor)
+    val stdout = SBlob(p.stdout)
+    val stderr = SBlob(p.stderr)
+    val a = Record.data(
+      "return-code" -> retval,
+      "stdout" -> stdout,
+      "stderr" -> stderr
+    )
+    (a, stdout, stderr)
+  }
+
+  protected final def is_implicit_http_communication(u: LispContext): Boolean =
+    u.bindings.getUrl("http.baseurl").isDefined
 }
 
 trait AsyncIoFunction extends IoFunction { // I/O bound, implicit asynchronous in function
@@ -458,6 +503,47 @@ object LispFunction {
           }.getOrElse(p.createDynamicServiceFunction(name).apply(newctx))
         case m => RAISE.notImplementedYetDefect
       }
+    }
+  }
+
+  case object ReturnSuccess extends ControlFunction {
+    val specification = FunctionSpecification("return-success", 3)
+    def apply(p: LispContext) = {
+      val params = p.parameters
+      def error = params.getProperty('else) getOrElse SError("return-success failure")
+      val r = params.arguments match {
+        case out :: predicate :: in :: Nil =>
+          if (p.evalCondition(predicate, in))
+            p.eval(out)
+          else
+            p.eval(error)
+        case _ => SError("return-success too many arguments")
+      }
+      p.toResult(r)
+    }
+  }
+
+  case object Atom extends EvalFunction {
+    val specification = FunctionSpecification("atom", 1)
+    def eval(p: Parameters) = {
+      val x = p.argument1[SExpr](specification)
+      SBoolean(x.isInstanceOf[SAtom])
+    }
+  }
+
+  case object Eq extends EvalFunction {
+    val specification = FunctionSpecification("eq", 2)
+    def eval(p: Parameters) = {
+      val (lhs, rhs) = p.argument2[SExpr, SExpr](specification)
+      SBoolean(lhs eq rhs)
+    }
+  }
+
+  case object Cons extends EvalFunction {
+    val specification = FunctionSpecification("cons", 2)
+    def eval(p: Parameters) = {
+      val (lhs, rhs) = p.argument2[SExpr, SExpr](specification)
+      SCell(lhs, rhs)
     }
   }
 
@@ -493,6 +579,41 @@ object LispFunction {
       }.getOrElse(SError("Empty list"))
   }
 
+  case object Cond extends ControlFunction {
+    val specification = FunctionSpecification("cond", 1)
+    def apply(p: LispContext) = {
+      val r = p.parameters.arguments.toStream.flatMap(_cond(p)).headOption.getOrElse(SError("cond: no selection"))
+      p.toResult(r)
+    }
+
+    private def _cond(ctx: LispContext)(p: SExpr): Option[SExpr] = p match {
+      case SCell(car, cdr) =>
+        if (ctx.condition(car))
+          Some(ctx.eval(_value(cdr)))
+        else
+          None
+      case _ => None
+    }
+
+    private def _value(p: SExpr) = p match {
+      case SCell(car, cdr) => car
+      case _ => SError("cond: Illegal structure")
+    }
+  }
+
+  case object If extends ControlFunction {
+    val specification = FunctionSpecification("if", 2)
+    def apply(p: LispContext) = {
+      val (pred, thenpart) = p.parameters.argument2[SExpr, SExpr](specification)
+      def elsepart = p.parameters.arguments.lift(2).getOrElse(SNil)
+      val r = if (p.condition(pred))
+        thenpart
+      else
+        elsepart
+      p.toResult(p.eval(r))
+    }
+  }
+
   case object ListFunc extends EvalFunction {
     val specification = FunctionSpecification("list")
     def eval(p: Parameters) = SList.create(p.arguments)
@@ -522,6 +643,14 @@ object LispFunction {
       }
       go(p.arguments)
     }
+  }
+
+  case object Equal extends EvalFunction {
+    val specification = FunctionSpecification("=", 2)
+
+    def eval(p: Parameters) = _equal(p.arguments(0), p.arguments(1))
+
+    private def _equal(l: SExpr, r: SExpr): SExpr = SBoolean(l == r)
   }
 
   case object Plus extends EvalFunction {
@@ -1102,6 +1231,31 @@ object LispFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
+  // TODO Consider the relationship with Fetch
+  case object Load extends IoFunction {
+    val specification = FunctionSpecification("load", 1)
+
+    def apply(p: LispContext): LispContext = {
+      val url = p.valueOrArgument1[URL](specification) // TODO uri
+      url_get(p, url)
+      // TODO eval
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
+  case object Save extends IoFunction {
+    val specification = FunctionSpecification("save", 2)
+
+    def apply(p: LispContext): LispContext = {
+      val (uri, a) = p.parameters.uriSExpr
+      val r = uri_save(p, uri, a)
+      p.toResult(r)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
   case object HttpGet extends IoFunction {
     val specification = FunctionSpecification("http-get", 2)
 
@@ -1192,7 +1346,7 @@ object LispFunction {
     val specification = FunctionSpecification("record-make", 1)
 
     def apply(u: LispContext): LispContext = {
-      val a = normalize_auto(u, u.parameters.head)
+      val a = normalize_auto_urx(u, u.parameters.head)
       val r = record_make(u, a)
       u.toResult(r)
     }
@@ -1226,10 +1380,20 @@ object LispFunction {
     val specification = FunctionSpecification("table-make", 1)
 
     def apply(u: LispContext): LispContext = {
-      val a = normalize_auto(u, u.parameters.head)
-      val r = table_make(u, a)
+      val a = normalize_auto_urx(u, u.parameters.head)
+      val caption = u.parameters.properties.get('caption)
+      val xpathpred = _xpathpred(caption)
+      val strategy = u.parameters.properties.get('strategy).map { x =>
+        CreateHtmlStrategy.get(x).getOrElse(RAISE.invalidArgumentFault(s"Unkown strategy: $x"))
+      }.getOrElse(CreateHtmlStrategy.NaturalStrategy)
+      val r = table_make(u, a, xpathpred, strategy)
       u.toResult(r)
     }
+
+    private def _xpathpred(caption: Option[SExpr]): Option[XPathPredicate] =
+      caption.map(x =>
+        XPathPredicate(XPathPredicate.ChildElementContainText("caption", x.asString))
+      )
   }
 
   case object TableMatrix extends EvalFunction {

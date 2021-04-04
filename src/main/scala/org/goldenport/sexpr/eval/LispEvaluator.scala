@@ -4,6 +4,7 @@ import scala.util.control.NonFatal
 import org.goldenport.RAISE
 import org.goldenport.log.LogMark, LogMark._
 import org.goldenport.i18n.I18NContext
+import org.goldenport.trace.{Result => TResult}
 import org.goldenport.parser.CommandParser
 import org.goldenport.record.v3.Record
 import org.goldenport.record.query.QueryExpression
@@ -39,7 +40,9 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Feb. 29, 2020
  *  version Jul. 20, 2020
  *  version Jan. 16, 2021
- * @version Feb. 25, 2021
+ *  version Feb. 25, 2021
+ *  version Mar. 21, 2021
+ * @version Apr.  4, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -75,10 +78,13 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     val ctx1 = syntax_expansion(ctx0)
     val ctx2 = macro_expansion(ctx1)
     val ctx = normalize_context(ctx2)
-    apply_lambda_option(ctx).orElse(
-      get_function(lift_Context(ctx)).
-        map(apply_function(ctx, _))
-    ).getOrElse(eval_value_context(ctx))
+    if (is_applicable(ctx))
+      apply_lambda_option(ctx).orElse(
+        get_function(lift_Context(ctx)).
+          map(apply_function(ctx, _))
+      ).getOrElse(eval_value_context(ctx))
+    else
+      eval_value_context(ctx)
   }
 
   protected def syntax_expansion(p: LispContext): LispContext = {
@@ -111,12 +117,23 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
 
   protected def resolve_Aliase(name: String): Option[SExpr] = None
 
+  protected def is_applicable(c: LispContext): Boolean = c.value match {
+    case m: SCell => true
+    case _ => false
+  }
+
   protected def apply_lambda_option(c: LispContext): Option[LispContext] = {
     c.value match {
-      case m: SLambda => Some(c.toResult(m))
-      case SCell(l @ SLambda(_, _), args) => Some(apply_lambda(c, l, args))
+      case m: SLambda => c.traceContext.execute("???", "???") {
+        TResult(Some(c.toResult(m)), "???")
+      }
+      case SCell(l @ SLambda(_, _), args) => c.traceContext.execute("???", "???") {
+        TResult(Some(apply_lambda(c, l, args)), "???")
+      }
       case SCell(a @ SAtom(name), args) => c.getBindedValue(name).flatMap {
-        case m: SLambda => Some(apply_lambda(c, m, args))
+        case m: SLambda => c.traceContext.execute("???", "???") {
+          TResult(Some(apply_lambda(c, m, args)), "???")
+        }
         case _ => None
       }
       case _ => None
@@ -183,6 +200,9 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
           _eval_function(c, m)
       }
     } catch {
+      case e: SError.SErrorException => 
+        val label = f.specification.label(e.error.message)
+        c.toResult(SError.merge(label, e))
       case NonFatal(e) =>
         val label = f.specification.label(e)
         c.toResult(SError(label, e))
@@ -212,10 +232,14 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   private def _eval_value_context(c: LispContext): LispContext = {
     // println(s"_eval_context: ${c.value}")
     val r: SExpr = c.value match {
-      case m: SAtom => eval_Atom(m).
-          orElse(c.getBindedValue(m.name)).
-          orElse(get_binded_value(m)).
-          getOrElse(SError.bindingNotFound(m.name))
+      case m: SAtom =>
+        c.traceContext.execute("???", "???") {
+          val r =eval_Atom(m).
+            orElse(c.getBindedValue(m.name)).
+            orElse(get_binded_value(m)).
+            getOrElse(SError.bindingNotFound(m.name))
+          TResult(r, "???")
+        }
       // case m @ SCell(car, _) if car.isInstanceOf[SCell] => SError.Unevaluatable(m)
       // case m: SCell => eval(m)
       // case m => m
@@ -284,15 +308,18 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
   private lazy val _functions: Vector[LispFunction] = {
     import LispFunction._
     Vector(
-      EvalOrInvoke, Quote, Setq,
+      EvalOrInvoke, ReturnSuccess,
       Pop, Peek, Mute, History, CommandHistory,
-      Car, Cdr, ListFunc, And, Or,
+      Atom, Eq, Cons, Car, Cdr,
+      Quote, Setq, Cond, If,
+      ListFunc, And, Or,
+      Equal,
       Plus, Minus, Multify, Divide,
       Length,
       Inv,
       StringInterpolate, StringInterpolateFormat, StringFormat, StringMessage, StringMessageKey,
       PathGet, Transform, Xslt, Select,
-      Fetch, Retry, Sh,
+      Fetch, Retry, Sh, Load, Save,
       HttpGet, HttpPost, HttpPut, HttpDelete,
       VectorVerticalFill,
       MatrixHorizontalConcatenate, MatrixLoad, MatrixSave, MatrixChart,
@@ -361,7 +388,9 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
     else
       Vector.empty
 
-  protected def functions_Pf: PartialFunction[C,LispFunction] = Map.empty
+  protected def functions_Pf: PartialFunction[C, LispFunction] = Map.empty
+  protected def get_Function(c: C): Option[LispFunction] = None
+  protected def get_Specification(name: String): Option[FunctionSpecification] = None
 
   // private val _control_functions = Vector("and", "or")
 
@@ -372,10 +401,15 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
     CommandParser.create(_functions.map(x => x.name -> x))
 
   override def getFunction(c: C): Option[LispFunction] =
-    _functions.toStream.filter(_.isDefinedAt(c)).headOption.orElse(
-      functions_Pf.lift(c)).
+    _functions.toStream.filter(_.isDefinedAt(c)).headOption.
+      orElse(functions_Pf.lift(c)).
+      orElse(get_Function(c)).
       orElse(quote_function(c)). // See _quote_syntax
       orElse(dynamic_service_function(c))
+
+  override def getSpecification(name: String): Option[FunctionSpecification] =
+    _functions.toStream.filter(_.name == name).map(_.specification).headOption.
+      orElse(get_Specification(name))
 
   protected def quote_function(c: C): Option[LispFunction] =
     c.value match {

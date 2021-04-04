@@ -28,7 +28,8 @@ import org.goldenport.value._
  *  version Jan. 26, 2020
  *  version Feb. 29, 2020
  *  version Mar. 30, 2020
- * @version Jan. 16, 2021
+ *  version Jan. 16, 2021
+ * @version Mar. 21, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -84,10 +85,28 @@ case class Parameters(
     spec: FunctionSpecification
   )(implicit a: SExprConverter[A]): Option[A] = getArgumentOneBased(1).map(a.apply)
 
+  def argumentsUsingProperties(ps: Seq[String]): List[SExpr] = {
+    case class Z(
+      args: List[SExpr] = arguments,
+      results: Vector[SExpr] = Vector.empty
+    ) {
+      def r = results.toList ::: args
+
+      def +(rhs: String) = getProperty(rhs).
+        map(x => copy(results = results :+ x)).
+        getOrElse(args match {
+          case Nil => this
+          case x :: xs => copy(args = xs, results = results :+ x)
+        })
+    }
+    ps./:(Z())(_+_).r
+  }
+
   def asStringList: List[String] = arguments.map(_.asString)
   def asBigDecimalList: List[BigDecimal] = arguments.map(_.asBigDecimal)
 
   def getProperty(p: Symbol): Option[SExpr] = properties.get(p)
+  def getProperty(p: String): Option[SExpr] = getProperty(Symbol(p))
   def getPropertyString(p: Symbol): Option[String] = getProperty(p).map {
     case SString(s) => s
     case SAtom(n) => n

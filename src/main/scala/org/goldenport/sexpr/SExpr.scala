@@ -10,6 +10,7 @@ import java.util.Locale
 import java.net.{URL, URI}
 import java.io.File
 import java.lang.reflect.InvocationTargetException
+import org.w3c.dom.Node
 import org.joda.time._
 import play.api.libs.json._
 import org.goldenport.RAISE
@@ -17,6 +18,7 @@ import org.goldenport.Strings
 import org.goldenport.parser._
 import org.goldenport.context.{StatusCode, Conclusion}
 import org.goldenport.i18n.{I18NString, I18NTemplate}
+import org.goldenport.console.Message
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.extension.IWindow
 import org.goldenport.extension.{IDocument => GDocument}
@@ -31,6 +33,7 @@ import org.goldenport.values.{Urn, NumberRange, ValueRange, NumberInterval, Date
 import org.goldenport.values.LocalDateTimeInterval
 import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource, UriUtils}
 import org.goldenport.bag.{ChunkBag, StringBag}
+import org.goldenport.bag.{ClobBag, BlobBag}
 import org.goldenport.xml.dom.{DomParser, DomUtils}
 import org.goldenport.parser.{LogicalToken, ParseResult}
 import org.goldenport.parser.ScriptToken
@@ -72,7 +75,9 @@ import org.goldenport.sexpr.eval.spark.SparkDataFrame
  *  version Feb. 29, 2020
  *  version Mar.  1, 2020
  *  version Jan. 31, 2021
- * @version Feb. 25, 2021
+ *  version Feb. 25, 2021
+ *  version Mar. 18, 2021
+ * @version Apr.  4, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr {
@@ -141,23 +146,24 @@ sealed trait SExpr {
   lazy val longTitle: String = {
     (titleInfo, titleDescription) match {
       case ("", "") => s"${titleName}"
-      case ("", d) => s"${titleName}: $d"
-      case (i, "") => s"${titleName}[$i]"
-      case (i, d) => s"${titleName}[$i]: $d"
+      case ("", d) => s"${titleName}:$d"
+      case (i, "") => s"${titleName}($i)"
+      case (i, d) => s"${titleName}($i):$d"
     }
   }
 
   /* Show a shortened natural representation with some information for debug. */
   /* SString("apple") => SString[5]: apple */
   lazy val show: String = try {
-    show_Content.fold(s"$longTitle") { s =>
+    val title = s"[$longTitle]"
+    show_Content.fold(title) { s =>
       val a = SExpr.toShow(s)
       if (titleDescription.nonEmpty)
-        s"${longTitle}\n${a}"
+        s"${title}\n${a}"
       else if (a.contains('\n') || a.contains('\r'))
-        s"${longTitle}\n${a}"
+        s"${title}\n${a}"
       else
-        s"${longTitle} ${a}"
+        s"${title}${a}"
     }
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#show[$e]"
@@ -184,7 +190,15 @@ sealed trait SExpr {
    */
   def fullDescription: SExpr.Description = _full_description
 
+  /*
+   * Show short representation to embeded in container format like table.
+   */
   def embed: String = display
+
+  /*
+   * Beautified representation.
+   */
+  def pretty: Seq[String] = SExpr.toFull(print)
 
   // def detail: Vector[String] = detailTitle +: detailContent
   // def detailName: String = 
@@ -199,6 +213,8 @@ sealed trait SExpr {
   // def detailInfo: String = ""
   // def detailDescription: String = ""
   // def detailContent: Vector[String] = getString.map(Strings.tolines).getOrElse(Vector.empty)
+
+  def toBag: Either[BlobBag, ClobBag] = Right(ClobBag.create(marshall))
 
   def carOrRaise: SExpr = RAISE.syntaxErrorFault(s"$this")
   def cdrOrRaise: SExpr = RAISE.syntaxErrorFault(s"$this")
@@ -254,7 +270,7 @@ object SAtom {
 }
 
 case class SKeyword(name: String) extends SExpr {
-  override def getString = Some(name)
+  override def getString = Some(s":$name")
   // def print = show
   // def show = ":" + name
 }
@@ -530,6 +546,8 @@ object SError {
 
   def create(p: SError, ps: Iterable[SError]): SError = apply(NonEmptyVector(p, ps.toVector))
 
+  def merge(label: String, e: SErrorException): SError = SError(e.error.conclusion.withMessage(label),  errors = Some(NonEmptyVector(e.error)))
+
   def invalidArgument(key: String, value: String): SError = {
     val s = s"Invalid parameter '$key': $value"
     SError(_bad_request, s)
@@ -585,7 +603,7 @@ object SError {
     case m => m
   }
 
-  class SErrorException(error: SError) extends RuntimeException(error.message) {
+  class SErrorException(val error: SError) extends RuntimeException(error.message) {
   }
 }
 
@@ -606,10 +624,16 @@ object SMetaCommand {
   }
 }
 
-case class SConsoleOutput(output: String) extends SExpr {
-  override protected def print_String = output
-  override def display = output
-  override protected def show_Content = Some(output)
+case class SConsoleOutput(output: Message) extends SExpr {
+  override protected def print_String = output.text
+  override def display = output.text
+  override protected def show_Content = Some(output.text)
+}
+
+case class SConsequence(value: SExpr, conclusion: Conclusion) extends SExpr {
+  override protected def print_String = s"""Consequence(${value.embed})"""
+  override def display = s"""Consequence(${value.embed})"""
+  override protected def show_Content = Some(display)
 }
 
 case class SBinary(binary: ChunkBag) extends SExpr {
@@ -648,7 +672,8 @@ object SRegex {
   def create(p: String, groupnames: Seq[String]): SExpr = SExpr.createOrError(SRegex(new Regex(p, groupnames: _*)))
 }
 
-case class SClob(bag: ChunkBag) extends SExpr {
+case class SClob(bag: ClobBag) extends SExpr {
+  override def pretty = SExpr.toFullPrettyGuess(bag.toString)
   override def getString = Some(bag.toText)
   override def titleInfo = bag.size.toString
   // def print = bag.toText
@@ -656,17 +681,20 @@ case class SClob(bag: ChunkBag) extends SExpr {
   def text = bag.toText
 }
 object SClob {
-  def apply(p: String): SClob = SClob(new StringBag(p))
+  def apply(p: String): SClob = SClob(ClobBag.create(p))
+  def apply(p: ChunkBag): SClob = SClob(ClobBag.create(p))
 }
 
-case class SBlob(bag: ChunkBag) extends SExpr {
+case class SBlob(bag: BlobBag) extends SExpr {
+  override def pretty = bag.toTextTry.toOption.map(SExpr.toFullPrettyGuess).getOrElse(super.pretty)
   override def getString = bag.toTextTry.toOption
   override def titleInfo = bag.size.toString
   // def print = bag.toText
   // def show = "Bag()"
 }
 object SBlob {
-  def text(p: String): SBlob = SBlob(StringBag.create(p))
+  def apply(p: ChunkBag): SBlob = SBlob(BlobBag.create(p))
+  def text(p: String): SBlob = SBlob(BlobBag.create(p))
 }
 
 // literal document format (e.g. smartdox)
@@ -701,7 +729,7 @@ case class SQuery(query: Query) extends SExpr {
 }
 object SQuery {
   def create(p: String): SQuery = {
-    val q = ???
+    val q = RAISE.notImplementedYetDefect
     SQuery(q)
   }
 }
@@ -746,6 +774,7 @@ case class STable(table: ITable) extends SExpr {
   lazy val schema: SExpr = SSchema(table.schema)
   def head: SExpr = _table.headOption.map(SRecord(_)).getOrElse(SNil)
   def tail: STable = STable(_table.tail)
+  def ensureHead: STable = STable(_table.ensureHead)
   def list: SList = SList.create(_vector)
   def vector: SVector = SVector(_vector)
   def row(y: Int): SExpr = _table.getRow(y).map(SRecord(_)).getOrElse(SNil)
@@ -760,7 +789,7 @@ case class STable(table: ITable) extends SExpr {
   def toRecordSequence: RecordSequence = RecordSequence(table.toRecordVector)
 }
 object STable {
-  def data(ps: Seq[Record]): STable = ???
+  def data(ps: Seq[Record]): STable = RAISE.notImplementedYetDefect
 }
 
 case class SVector(vector: Vector[SExpr]) extends SExpr {
@@ -922,6 +951,12 @@ case class SUrl(url: java.net.URL) extends SExpr {
 }
 object SUrl {
   def apply(p: String): SUrl = SUrl(new URL(p))
+
+  def makeOption(p: String): Option[SUrl] = 
+    if (UrlToken.isUrl(p))
+      Try(SUrl(p)).toOption
+    else
+      None
 }
 
 case class SUrn(urn: Urn) extends SExpr {
@@ -934,6 +969,12 @@ case class SUrn(urn: Urn) extends SExpr {
 }
 object SUrn {
   def apply(p: String): SUrn = SUrn(Urn(p))
+
+  def makeOption(p: String): Option[SUrn] =
+    if (UrnToken.isUrn(p))
+      Try(SUrn(p)).toOption
+    else
+      None
 }
 
 case class SUri(uri: URI) extends SExpr {
@@ -949,6 +990,15 @@ case class SUri(uri: URI) extends SExpr {
 }
 object SUri {
   def apply(p: String): SUri = SUri(new URI(p))
+
+  def makeOption(p: String): Option[SUri] =
+    if (UriToken.isUri(p))
+      Try(SUri(p)).toOption
+    else
+      None
+
+  def makeUrxOption(p: String): Option[SExpr] =
+    SUrl.makeOption(p) orElse SUrn.makeOption(p) orElse makeOption(p)
 }
 
 case class SExpression(expression: String) extends SExpr {
@@ -1014,6 +1064,7 @@ sealed trait SXml extends SExpr with IDom {
   }
   def text: String
   def dom: org.w3c.dom.Node
+  override def pretty = SExpr.toFull(SExpr.toPrettyXml(dom))
 }
 object SXml {
   val suffix = "xml"
@@ -1054,6 +1105,7 @@ case class SHtml(dom: org.w3c.dom.Node) extends SExpr with IDom {
     case _ => false
   }
   lazy val text: String = DomUtils.toText(dom)
+  override def pretty = SExpr.toFull(SExpr.toPrettyHtml(dom))
   override def getString = Some(text)
   override def asString = text
   override protected def print_String = text
@@ -1123,6 +1175,7 @@ case class SPug(pug: String) extends SExpr {
 sealed trait SJson extends SExpr with IDom {
   def text: String
   def json: JsValue
+  override def pretty = SExpr.toFull(Json.prettyPrint(json))
   override def getString = Some(text)
   override def asString = text
 
@@ -1761,6 +1814,37 @@ object SExpr {
   def toFull(s: Option[String]): Vector[String] = s.map(toFull).getOrElse(Vector.empty)
 
   def toFull(s: String): Vector[String] = Strings.tolines(s)
+
+  def toFullPrettyGuess(s: String): Vector[String] = toFull(toPrettyGuess(s))
+
+  def toPrettyGuess(s: String): String = Try(
+    s.headOption.map {
+      case '<' => toPrettyXml(s)
+      case '{' => toPrettyJson(s)
+      case _ => s
+    }.getOrElse(s)
+  ).getOrElse(s)
+
+  def toPrettyXml(p: String): String = {
+    val dom = DomUtils.parseHtmlFragment(p)
+    toPrettyXml(dom)
+  }
+
+  def toPrettyXml(dom: Node): String = DomUtils.toPrettyFragmentText(dom)
+
+  def toPrettyHtml(p: String): String = {
+    val dom = DomUtils.parseHtmlFragment(p)
+    toPrettyHtml(dom)
+  }
+
+  def toPrettyHtml(dom: Node): String = DomUtils.toHtmlPrettyText(dom)
+
+  def toPrettyJson(p: String): String = {
+    val json = Json.parse(p)
+    toPrettyJson(json)
+  }
+
+  def toPrettyJson(json: JsValue): String = Json.prettyPrint(json)
 
   def escapeDisplay(s: String): String =
     if (s.contains('\n') | s.contains('\r')) {

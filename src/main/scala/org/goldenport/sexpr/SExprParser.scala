@@ -23,7 +23,8 @@ import org.goldenport.sexpr.eval.LogicalTokensReader
  *  version Sep.  9, 2018
  *  version Feb. 16, 2019
  *  version Apr. 13, 2019
- * @version Jul. 16, 2019
+ *  version Jul. 16, 2019
+ * @version Mar.  7, 2021
  * @author  ASAMI, Tomoharu
  */
 object SExprParser extends JavaTokenParsers {
@@ -165,16 +166,16 @@ object SExprParserNew extends Parsers {
   def apply(reader: Reader): SExpr = apply(reader.asReadChars.string)
 
   def apply(in: CharSequence): SExpr = {
-    println(s"apply $in")
+    // println(s"apply $in")
     parse(LogicalTokens.parseSexpr(in.toString))
   }
 
   def parse(in: LogicalToken): SExpr = parse(LogicalTokens(in))
 
   def parse(in: LogicalTokens): SExpr = {
-    println(s"SExprParserNew#parse $in")
+    // println(s"SExprParserNew#parse $in")
     val reader = LogicalTokensReader(in)
-    println(reader)
+    // println(reader)
     sexpr(reader) match {
       case Success(s, _) => s
       case Failure(msg, in) => throw new IllegalArgumentException(s"$msg")
@@ -281,7 +282,7 @@ object SExprParserNew extends Parsers {
   def keyword = new Parser[SKeyword] {
     def apply(in: Input) = {
       in.first match {
-        case AtomToken(k, _) if k.startsWith(":") => Success(SKeyword(k), in.rest)
+        case AtomToken(k, _) if k.startsWith(":") => Success(SKeyword(k.substring(1)), in.rest)
         case m => Failure(s"Not keyword: $m", in.rest)
       }
     }

@@ -27,7 +27,8 @@ import org.goldenport.sexpr._
  *  version Aug. 31, 2019
  *  version Sep. 16, 2019
  *  version Oct. 31, 2019
- * @version Jan. 24, 2021
+ *  version Jan. 24, 2021
+ * @version Mar. 21, 2021
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
@@ -42,6 +43,9 @@ trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
 
   protected final def get_function[T](ctx: C): Option[LispFunction] = 
     _stack.toStream.flatMap(_.getFunction(ctx)).headOption
+
+  protected final def get_Specification[T](name: String): Option[FunctionSpecification] = 
+    _stack.toStream.flatMap(_.getSpecification(name)).headOption
 
   protected final def get_binded_value(atom: SAtom): Option[SExpr] =
     _stack.toStream.flatMap(_.get(atom)).headOption
@@ -522,6 +526,8 @@ trait Binding[C <: EvalContext] {
   protected def is_Control_Function(atom: SAtom): Option[Boolean] = None
 
   def getFunction(ctx: C): Option[LispFunction] = None
+
+  def getSpecification(name: String): Option[FunctionSpecification] = None
 
   def functionParser: CommandParser[LispFunction]
 }

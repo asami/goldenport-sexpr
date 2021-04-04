@@ -45,10 +45,11 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Feb. 29, 2020
  *  version Mar. 30, 2020
  *  version Jan. 16, 2021
- * @version Feb. 25, 2021
+ *  version Feb. 25, 2021
+ * @version Mar. 12, 2021
  * @author  ASAMI, Tomoharu
  */
-trait LispContext extends EvalContext with ParameterPart
+trait LispContext extends EvalContext with ParameterPart with TracePart
     with ScriptEnginePart with SparkPart {
   def config: LispConfig
   def i18nContext: I18NContext
@@ -135,6 +136,19 @@ trait LispContext extends EvalContext with ParameterPart
   }
 
   def apply(expr: SExpr): LispContext = toResult(eval(expr))
+
+  def evalCondition(predicate: SExpr, value: SExpr): Boolean = {
+    val s = SList(predicate, value)
+    val r = eval(s)
+    condition(r)
+  }
+
+  def condition(value: SExpr): Boolean = value match {
+    case SNil => false
+    case m: SBoolean => m.value
+    case m: SError => false
+    case m => true
+  }
 
   override final def toResult(expr: SExpr): LispContext = toResult(expr, Record.empty)
 
