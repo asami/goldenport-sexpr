@@ -24,7 +24,8 @@ import org.goldenport.sexpr._
  *  version Oct. 31, 2019
  *  version Nov. 16, 2019
  *  version Jan. 24, 2021
- * @version Feb. 20, 2021
+ *  version Feb. 20, 2021
+ * @version Apr. 21, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -255,7 +256,7 @@ object Script {
         case m: LocalDateTimeToken => add_Sexpr(config, SLocalDateTime(m.datetime))
         case m: MonthDayToken => add_Sexpr(config, SMonthDay(m.monthday))
         case m: PeriodToken => add_Sexpr(config, SPeriod(m.period))
-        case m: DurationToken => add_Sexpr(config, SDuration(m.duration))
+        case m: DurationToken => add_Sexpr(config, SDuration(m.duration, Some(m.raw)))
         case m: DateTimeIntervalToken => add_Sexpr(config, SDateTimeInterval(m.interval))
         case m: LocalDateTimeIntervalToken => add_Sexpr(config, SLocalDateTimeInterval(m.interval))
         case m: UrlToken => add_Sexpr(config, SUrl(m.url))

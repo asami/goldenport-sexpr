@@ -4,7 +4,6 @@ import scala.util.control.NonFatal
 import org.goldenport.RAISE
 import org.goldenport.log.LogMark, LogMark._
 import org.goldenport.i18n.I18NContext
-import org.goldenport.trace.{Result => TResult}
 import org.goldenport.parser.CommandParser
 import org.goldenport.record.v3.Record
 import org.goldenport.record.query.QueryExpression
@@ -42,7 +41,7 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Jan. 16, 2021
  *  version Feb. 25, 2021
  *  version Mar. 21, 2021
- * @version Apr.  4, 2021
+ * @version Apr. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -124,15 +123,18 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
 
   protected def apply_lambda_option(c: LispContext): Option[LispContext] = {
     c.value match {
-      case m: SLambda => c.traceContext.execute("???", "???") {
-        TResult(Some(c.toResult(m)), "???")
+      case m: SLambda => c.traceContext.execute(m.label, "???") {
+        c.traceContext.result(Some(c.toResult(m)), "???")
       }
-      case SCell(l @ SLambda(_, _), args) => c.traceContext.execute("???", "???") {
-        TResult(Some(apply_lambda(c, l, args)), "???")
+      case SCell(l @ SLambda(_, _, _), args) => c.traceContext.execute(l.label, args) {
+
+        val r = apply_lambda(c, l, args)
+        c.traceContext.result(Some(r), r.getValue)
       }
       case SCell(a @ SAtom(name), args) => c.getBindedValue(name).flatMap {
-        case m: SLambda => c.traceContext.execute("???", "???") {
-          TResult(Some(apply_lambda(c, m, args)), "???")
+        case m: SLambda => c.traceContext.execute(m.label, args) {
+          val r = apply_lambda(c, m, args)
+          c.traceContext.result(Some(r), r.getValue)
         }
         case _ => None
       }
@@ -173,8 +175,9 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   protected def apply_function(c: LispContext, f: LispFunction): LispContext = {
     val functionname = f.name
     val inputlabel = c.value
+    val functionlabel = s"Function(${f.kindName}):$functionname"
     c.log.trace(s"apply_function[${functionname}] ${inputlabel}")
-    c.traceContext.enter(functionname, s"${inputlabel}")
+    c.traceContext.enter(functionlabel, inputlabel)
     val r = try {
       f match {
         case m: EvalFunction =>
@@ -191,7 +194,7 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
           _eval_function(c, m)
         case m: IoFunction =>
           c.log.trace(s"apply_function[Io:${functionname}] ${inputlabel}")
-          c.toResult(SFuture(c, m).start())
+          _eval_function_async(c, m)
         case m: HeavyFunction =>
           c.log.trace(s"apply_function[Heavy:${functionname}] ${inputlabel}")
           c.toResult(SLazy(c, m))
@@ -208,17 +211,39 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
         c.toResult(SError(label, e))
     }
     c.log.trace(s"apply_function[${functionname}] ${inputlabel} => $r")
-    c.traceContext.leave(functionname, s"${r}")
+    c.traceContext.leave(functionlabel, r.value)
     r
   }
 
+  private def _eval_function_async(c: LispContext, f: IoFunction): LispContext =
+    if (_is_async(c, f))
+      c.toResult(SFuture(c, f).start())
+    else
+      _eval_function(c, f)
+
   private def _eval_function(c: LispContext, f: LispFunction): LispContext = {
     val a = c.reductForEval
-    if (_is_lazy(a.value))
+    if (_is_error(a) && !f.isAcceptError)
+      c.toResult(_to_error(a))
+    else if (_is_lazy(a.value))
       c.toResult(SLazy(c, f)) // lazy evaluation for SControl(e.g. SFuture) elements.
     else
       f(a)
   }
+
+  private def _is_error(p: LispContext): Boolean = p.parameters.isErrorArguments
+
+  private def _to_error(p: LispContext): SError = _to_error(p.parameters.arguments)
+
+  private def _to_error(ps: List[SExpr]) = ps.collect {
+    case m: SError => m
+  } match {
+    case Nil => SError.noReachDefect("_to_error")
+    case x :: Nil => x
+    case x :: xs => SError.create(x, xs)
+  }
+
+  private def _is_async(c: LispContext, f: IoFunction) = c.isPolicyIoAsync
 
   private def _is_lazy(p: SExpr) = p.getList.exists(_.isInstanceOf[SControl])
 
@@ -233,12 +258,12 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     // println(s"_eval_context: ${c.value}")
     val r: SExpr = c.value match {
       case m: SAtom =>
-        c.traceContext.execute("???", "???") {
-          val r =eval_Atom(m).
+        c.traceContext.execute(s"Variable:${m.name}", m) {
+          val r = eval_Atom(m).
             orElse(c.getBindedValue(m.name)).
             orElse(get_binded_value(m)).
             getOrElse(SError.bindingNotFound(m.name))
-          TResult(r, "???")
+          c.traceContext.result(r, r)
         }
       // case m @ SCell(car, _) if car.isInstanceOf[SCell] => SError.Unevaluatable(m)
       // case m: SCell => eval(m)

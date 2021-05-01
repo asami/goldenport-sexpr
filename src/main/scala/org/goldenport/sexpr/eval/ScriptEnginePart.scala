@@ -14,7 +14,8 @@ import org.goldenport.sexpr._
  *  version Aug. 31, 2019
  *  version Sep. 29, 2019
  *  version Nov. 29, 2019
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Apr. 13, 2021
  * @author  ASAMI, Tomoharu
  */
 trait ScriptEnginePart { self: LispContext =>
@@ -142,13 +143,14 @@ trait ScriptEnginePart { self: LispContext =>
 
   // See org.goldenport.kaleidox.lisp.Evaluator.normalize.
   private def _get_property(key: String): Option[Any] = key match {
-    case "#" => Some(takeHistory)
-    case "?" => Some(peek)
-    case "!" => Some(takeCommandHistory)
-    case _ => StringUtils.getMarkInt(key).collect {
-      case ("#", i) => takeHistory(i)
-      case ("?", i) => peek(i)
-      case ("!", i) => takeCommandHistory(i)
+    case "#" => getHistory(1)
+    case "?" => getStack(1)
+    case "!" => getCommandHistory(1)
+    case _ => StringUtils.getMarkInt(key).flatMap {
+      case ("#", i) => getHistory(i)
+      case ("?", i) => getStack(i)
+      case ("!", i) => getCommandHistory(i)
+      case _ => None
     }.orElse(
       bindings.get(key)
     )
@@ -168,7 +170,7 @@ trait ScriptEnginePart { self: LispContext =>
     }
 
   private def _get_property(o: AnyRef, propertyname: String): Option[Any] = o match {
-    case m: SRecord => m.record.get(propertyname)
+    case m: SRecord => m.record.get(propertyname) orElse BeanUtils.getProperty(m, propertyname)
     // See ScriptEngineContext#_value
     case m: SExpr => BeanUtils.getProperty(m, propertyname) // orElse _get_property(mm.asJavaObject, propertyname, format)
     case m => BeanUtils.getProperty(m, propertyname)

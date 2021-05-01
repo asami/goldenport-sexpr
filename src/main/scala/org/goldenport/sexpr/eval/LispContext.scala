@@ -9,7 +9,9 @@ import scala.concurrent.duration._
 import org.goldenport.RAISE
 import org.goldenport.log.LogContext
 import org.goldenport.i18n.I18NContext
-import org.goldenport.trace.TraceContext
+import org.goldenport.context.Effect
+import org.goldenport.trace.{Trace, TraceContext}
+import org.goldenport.trace.Container
 import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.v3.sql.SqlContext
 import org.goldenport.record.query.QueryExpression
@@ -46,7 +48,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Mar. 30, 2020
  *  version Jan. 16, 2021
  *  version Feb. 25, 2021
- * @version Mar. 12, 2021
+ *  version Mar. 12, 2021
+ * @version Apr. 13, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
@@ -63,8 +66,11 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
   def incident: Option[LibIncident]
   def numericalOperations: INumericalOperations
   def traceContext: TraceContext
+  def futureEffect: Option[Effect.FutureEffect]
 
   def locale = i18nContext.locale
+
+  def isPolicyIoAsync: Boolean = true // TODO false
 
   def takeResourceHandle(p: ResourceLocator): ResourceHandle = resourceManager.takeHandle(p)
   def takeResourceHandle(p: URI): ResourceHandle = resourceManager.takeHandle(p)
@@ -73,6 +79,10 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
   def pure(p: SExpr): LispContext
 
   override def resolve: LispContext = super.resolve.asInstanceOf[LispContext]
+
+  def getValue: Option[SExpr]
+
+  def createContextForFuture(effect: Effect.FutureEffect): LispContext
 
   def reducts(ps: List[SExpr]): List[SExpr] = ps.map(reduct)
 
@@ -177,25 +187,32 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
   def pop(n: Int): LispContext = RAISE.unsupportedOperationFault
   def peek: SExpr = RAISE.unsupportedOperationFault
   def peek(n: Int): SExpr = RAISE.unsupportedOperationFault
+  def getStack(n: Int): Option[SExpr] = RAISE.unsupportedOperationFault
   def takeHistory: SExpr = RAISE.unsupportedOperationFault
   def takeHistory(n: Int): SExpr = RAISE.unsupportedOperationFault
+  def getHistory(n: Int): Option[SExpr] = RAISE.unsupportedOperationFault
   def takeCommandHistory: SExpr = RAISE.unsupportedOperationFault
   def takeCommandHistory(n: Int): SExpr = RAISE.unsupportedOperationFault
+  def getCommandHistory(n: Int): Option[SExpr] = RAISE.unsupportedOperationFault
   def getPipelineIn: Option[SExpr] = None
 
   val futureDuration = 10.minutes // TODO customizable
 
-  def futureForEval(p: LispFunction): Future[LispContext] = Future {
-    try {
-      LogContext.setRootLevel(config.logLevel)
-      log.debug(ThreadLocation, StartAction, "future", p.name)
-      val r = p(this.reductForEval)
-      log.debug(ThreadLocation, EndAction, "future", s"${p.name} => $r")
-      r
-    } catch {
-      case e: Throwable =>
-        log.error(ThreadLocation, EndErrorAction, "future", p.name, e)
-        toResult(SError(e))
+  def futureForEval(p: LispFunction): Future[LispContext] = {
+    val effect = traceContext.createFuture()
+    val futurecontext = createContextForFuture(effect)
+    Future {
+      try {
+        LogContext.setRootLevel(config.logLevel)
+        log.debug(ThreadLocation, StartAction, "future", p.name)
+        val r = p(futurecontext.reductForEval)
+        log.debug(ThreadLocation, EndAction, "future", s"${p.name} => $r")
+        r
+      } catch {
+        case e: Throwable =>
+          log.error(ThreadLocation, EndErrorAction, "future", p.name, e)
+          toResult(SError(e))
+      }
     }
   }
 
@@ -214,9 +231,24 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
   }
 
   def wait(ctx: LispContext, p: Future[LispContext]): LispContext = try {
-    Await.result(p, futureDuration)
+    val r = Await.result(p, futureDuration)
+    val t = r.traceContext.toTrace
+    val e = r.futureEffect
+    e.foreach { x =>
+      _merge_trace(x, t)
+    }
+    val v = r.getValue getOrElse SNil
+    ctx.pure(v)
   } catch {
     case NonFatal(e) => ctx.pure(SError(e))
+  }
+
+  private def _merge_trace(effect: Effect.FutureEffect, trace: Trace) {
+    val children = trace match {
+      case m: Container => m.children
+      case m => Nil
+    }
+    effect.container.setChildren(children)
   }
 
   def withUnavailableFunction(p: String) = this // TODO
@@ -414,6 +446,10 @@ object LispContext {
   val defaultStoreLogic = StoreOperationLogic.printer
   // def defaultFeature = FeatureContext.default
 
+  // class FutureEffect() extends Effect.Async {
+  //   var result: SExpr = SNil
+  // }
+
   def apply(
     config: LispConfig,
     i18ncontext: I18NContext,
@@ -468,9 +504,13 @@ object LispContext {
     feature: FeatureContext,
     value: SExpr,
     incident: Option[LibIncident],
-    bindings: Record
+    bindings: Record,
+    futureEffect: Option[Effect.FutureEffect] = None
   ) extends LispContext {
     def pure(p: SExpr) = copy(value = p)
+    def getValue: Option[SExpr] = Some(value)
+    def createContextForFuture(effect: Effect.FutureEffect): LispContext =
+      copy(traceContext = TraceContext.create(), futureEffect = Some(effect))
     def toResult(p: SExpr, i: Option[LibIncident], b: IRecord) = copy(value = p, incident = i, bindings = bindings + b.toRecord)
     def addBindings(p: IRecord) = copy(bindings = bindings + p.toRecord)
   }

@@ -22,6 +22,7 @@ import org.goldenport.console.Message
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.extension.IWindow
 import org.goldenport.extension.{IDocument => GDocument}
+import org.goldenport.extension.Showable
 import org.goldenport.matrix.{IMatrix, Matrix}
 import org.goldenport.record.v2.{Schema, Column, XDouble}
 import org.goldenport.record.v3.{IRecord, Record, ITable, Table, RecordSequence}
@@ -41,6 +42,7 @@ import org.goldenport.parser.CommandParser
 import org.goldenport.xsv.Lxsv
 import org.goldenport.util.{StringUtils, AnyRefUtils, AnyUtils}
 import org.goldenport.util.DateTimeUtils
+import org.goldenport.util.SpireUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
 import org.goldenport.sexpr.eval.spark.SparkDataFrame
 // import org.goldenport.sexpr.eval.chart.Chart
@@ -77,10 +79,10 @@ import org.goldenport.sexpr.eval.spark.SparkDataFrame
  *  version Jan. 31, 2021
  *  version Feb. 25, 2021
  *  version Mar. 18, 2021
- * @version Apr.  4, 2021
+ * @version Apr. 25, 2021
  * @author  ASAMI, Tomoharu
  */
-sealed trait SExpr {
+sealed trait SExpr extends Showable {
   override def toString(): String = display
   def isNilOrFalse: Boolean = false
   def getList: Option[List[SExpr]] = None
@@ -88,6 +90,8 @@ sealed trait SExpr {
   def getString: Option[String] = None
   def asObject: Any = getString getOrElse this
   def asJavaObject: Object = asObject.asInstanceOf[Object] // used by java features (e.g. formatter)
+  def asRecordOrObject: Any = asObject
+  def asRecordOrJavaObject: Any = asJavaObject
   def asString: String = getString getOrElse RAISE.unsupportedOperationFault(s"Not string(${this})")
   def asInt: Int = RAISE.unsupportedOperationFault(s"Not number(${this})")
   def asLong: Long = RAISE.unsupportedOperationFault(s"Not number(${this})")
@@ -277,7 +281,7 @@ case class SKeyword(name: String) extends SExpr {
 
 case class SNumber(number: spire.math.Number) extends SExpr {
   override def asObject = number
-  override def asJavaObject = number.toBigDecimal.bigDecimal
+  override def asJavaObject = SpireUtils.toJavaNumber(number)
   override lazy val asString = number.toString
   override def getString = Some(asString)
   // def print = show
@@ -436,12 +440,49 @@ case object SNil extends SList {
   def append(p: List[SExpr]) = SList.create(p)
 }
 
-case class SLambda(parameters: List[String], expressions: List[SExpr]) extends SExpr {
+case class SLambda(
+  labelOption: Option[String],
+  parameters: List[String],
+  expressions: List[SExpr]
+) extends SExpr {
   // override def getString = Some(toString)
   // def print = toString
   // def show = print
+
+  def label: String = labelOption.map(x => s"Lambda:$x").getOrElse("Lambda")
 }
 object SLambda {
+  def apply(
+    parameters: List[String],
+    expressions: List[SExpr]
+  ): SLambda = SLambda(None, parameters, expressions)
+
+  def apply(
+    label: String,
+    parameters: List[String],
+    expressions: List[SExpr]
+  ): SLambda = SLambda(Some(label), parameters, expressions)
+
+  def create(label: String, p: SExpr): SLambda = {
+    def raise = RAISE.syntaxErrorFault(s"Illegal lambda: $p")
+    try {
+      val ps = p.carOrRaise match {
+        case m: SCell => m.list.map {
+          case SAtom(name) => name
+          case _ => raise
+        }
+        case m => raise
+      }
+      val body = p.cdrOrRaise match {
+        case m: SCell => m.list
+        case m => raise
+      }
+      SLambda(Some(label), ps, body)
+    } catch {
+      case NonFatal(e) => raise
+    }
+  }
+
   def create(p: SExpr): SLambda = {
     def raise = RAISE.syntaxErrorFault(s"Illegal lambda: $p")
     try {
@@ -456,7 +497,7 @@ object SLambda {
         case m: SCell => m.list
         case m => raise
       }
-      SLambda(ps, body)
+      SLambda(None, ps, body)
     } catch {
       case NonFatal(e) => raise
     }
@@ -514,6 +555,7 @@ object SError {
   private def _not_found = Conclusion.NotFound
   private def _internal_server_error = Conclusion.InternalServerError
   private def _not_implemented = Conclusion.NotImplemented
+  private def _no_reach = Conclusion.NoReach
 
   def apply(conclusion: Conclusion, msg: String): SError = SError(conclusion.withMessage(msg))
   def apply(p: String): SError = SError(_internal_server_error)
@@ -574,6 +616,8 @@ object SError {
 
   def invalidArgumentFault(p: String): SError = SError(_bad_request, p)
 
+  def missingArgumentFault(p: String): SError = SError(_bad_request, p) // TODO
+
   def invalidDatatype(name: String, p: SExpr): SError = {
     val label = s"Invalid datatype '$name': $p"
     SError(_bad_request, label)
@@ -597,6 +641,8 @@ object SError {
   }
 
   def notImplementedYetDefect(p: String): SError = SError(_not_implemented, p)
+
+  def noReachDefect(p: String): SError = SError(_no_reach, p)
 
   private def _normalize(p: Throwable): Throwable = p match {
     case m: InvocationTargetException => Option(m.getTargetException) orElse Option(m.getCause) getOrElse m
@@ -736,12 +782,16 @@ object SQuery {
 
 case class SRecord(record: IRecord) extends SExpr {
   override def asObject: Any = record
+  override def pretty = table.pretty
+  override def embed = record.embed
   override def getString = Some(record.show)
   override protected def print_String = record.print
   override def titleInfo = s"${record.length}"
   override protected def show_Content = Some(record.show)
 
   def get(propertyname: String): SExpr = SExpr.create(record.get(propertyname))
+
+  def table: STable = STable(Table.create(record))
 }
 object SRecord {
   def create(p: Lxsv): SRecord = SRecord(Record.create(p))
@@ -751,6 +801,7 @@ object SRecord {
 
 case class STable(table: ITable) extends SExpr {
   override def asObject: Any = table
+  override def pretty = SExpr.toFull(table.show)
   override def getString = Some(display)
   override val titleInfo = s"${table.width}x${table.height}"
   override protected def print_String = table.print
@@ -1299,9 +1350,9 @@ object SLocalDateTimeInterval {
  * See scala.concurrent.duration.Duration
  * See https://stackoverflow.com/questions/2653567/joda-time-whats-the-difference-between-period-interval-and-duration
  */
-case class SDuration(duration: Duration) extends SExpr {
+case class SDuration(duration: Duration, label: Option[String] = None) extends SExpr {
   override def asObject = duration
-  override def getString = Some(duration.toString)
+  override def getString = label orElse Some(duration.toString)
   // def print = show
   // def show = duration.toString
 }
@@ -1310,7 +1361,7 @@ object SDuration {
 
   def apply(p: ScalaDuration): SDuration = SDuration(new Duration(p.toMillis))
 
-  def parse(p: String): ParseResult[SDuration] = DurationUtils.parseJoda(p).map(SDuration.apply)
+  def parse(p: String): ParseResult[SDuration] = DurationUtils.parseJoda(p).map(SDuration(_, Some(p)))
 
   def create(p: String): SDuration = parse(p).take
 
@@ -1528,6 +1579,8 @@ case class SFuture(c: LispContext, f: LispFunction) extends SControl {
     this
   }
   def resolveContext: LispContext = c.wait(c, _future)
+}
+object SFuture {
 }
 
 case class SLazy(c: LispContext, f: LispFunction) extends SControl {
@@ -1793,7 +1846,7 @@ object SExpr {
   }
 
   def toShowLong(s: String): String = {
-    val a = StringUtils.printConsole(s, "\n", 10)
+    val a = StringUtils.showConsole(s, "\n", 10)
     StringUtils.dropRightNewlines(a)
   }
 

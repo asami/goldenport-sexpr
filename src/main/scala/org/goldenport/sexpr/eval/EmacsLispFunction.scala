@@ -6,7 +6,8 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Mar. 17, 2019
- * @version Mar. 23, 2019
+ *  version Mar. 23, 2019
+ * @version Apr. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 object EmacsLispFunction {
@@ -27,7 +28,7 @@ object EmacsLispFunction {
         case m => RAISE.invalidArgumentFault(s"Invalid parameter list: ${m.show}")
       }
       val body = p.parameters.arguments.tail.tail
-      val r = SLambda(params, body)
+      val r = SLambda(Some(name), params, body)
       p.toResult(r, Record.data(name -> r))
     }
   }

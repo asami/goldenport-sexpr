@@ -22,14 +22,15 @@ import Parameters.Cursor
  *  version Sep. 30, 2019
  *  version Nov.  9, 2019
  *  version Feb. 29, 2020
- * @version Mar. 30, 2020
+ *  version Mar. 30, 2020
+ * @version Apr. 12, 2021
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
   implicit private val _query_context: QueryExpression.Context = sqlContext.queryContext
 
   object param {
-    def cursor(spec: FunctionSpecification) = Cursor(feature, spec, parameters)
+    def cursor(spec: FunctionSpecification) = Cursor(feature, spec, spec.resolve(parameters))
 
     def arguments = State[Cursor, ValidationNel[SError, List[SExpr]]](_.arguments)
 
@@ -58,6 +59,18 @@ trait ParameterPart { self: LispContext =>
     def table(u: LispContext) = State[Cursor, ValidationNel[SError, STable]](_.table(u))
 
     def tableHeader(u: LispContext) = State[Cursor, ValidationNel[SError, Option[Table.HeaderStrategy]]](_.tableHeader(u))
+
+    /*
+     * Property
+     */
+    def take(key: Symbol) = State[Cursor, ValidationNel[SError, SExpr]](_.take(key))
+
+    def get(key: Symbol) = State[Cursor, ValidationNel[SError, Option[SExpr]]](_.get(key))
+
+    /*
+     * Property Vaue
+     */
+    def getInt(key: Symbol) = State[Cursor, ValidationNel[SError, Option[Int]]](_.getInt(key))
 
     def propertyStringList(key: Symbol) = State[Cursor, ValidationNel[SError, List[String]]](_.propertyStringList(key))
 

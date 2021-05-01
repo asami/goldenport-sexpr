@@ -11,6 +11,7 @@ import java.net.{URL, URI}
 import play.api.libs.json._
 import org.goldenport.Strings
 import org.goldenport.exception.RAISE
+import org.goldenport.context.Effect
 import org.goldenport.record.v3.{Record, ITable}
 import org.goldenport.record.unitofwork._
 import org.goldenport.record.unitofwork.UnitOfWork._
@@ -52,13 +53,15 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Jul. 20, 2020
  *  version Feb. 22, 2021
  *  version Mar. 21, 2021
- * @version Apr.  4, 2021
+ * @version Apr. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
     with UtilityPart with MatrixPart with XPathPart with RecordPart with TablePart with Loggable {
   def specification: FunctionSpecification
+  def kindName: String
   def name: String = specification.name
+  def isAcceptError: Boolean = false
 
   def isDefinedAt(p: LispContext): Boolean = {
     val r = is_defined_at(p)
@@ -199,6 +202,7 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
         u.serviceLogic.fileSave(uri, b)
         b
     }
+    u.traceContext.effect(Effect.Io.Storage.File.create(uri))
     response_result(u, SUrl(uri.toURL), res)
   }
 
@@ -371,14 +375,27 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
 }
 
 trait ApplyFunction extends LispFunction {
+  def kindName = "Apply"
 }
 
 trait EvalFunction extends LispFunction {
-  protected def is_normalize: Boolean = true
+  def kindName = "Eval"
+}
+
+// trait ResolvedParametersFeature { self: EvalFunction =>
+//   override def apply(p: LispContext): LispContext = {
+//     val ps = p.parameters.map(normalize_auto(p, _))
+//     val r = eval(ps)
+//     p.toResult(r)
+//   }
+// }
+
+trait ParameterEvalFunction extends EvalFunction {
+  protected def is_normalize_auto: Boolean = true
 
   def apply(p: LispContext): LispContext = {
     val resolved = p.parameters // specification.resolve(p.parameters)
-    val params = if (is_normalize)
+    val params = if (is_normalize_auto)
       resolved.map(normalize_auto(p, _))
     else
       resolved
@@ -389,25 +406,42 @@ trait EvalFunction extends LispFunction {
   def eval(p: Parameters): SExpr
 }
 
-trait ResolvedParametersFeature { self: EvalFunction =>
-  override def apply(p: LispContext): LispContext = {
-    val ps = p.parameters.map(normalize_auto(p, _))
-    val r = eval(ps)
-    p.toResult(r)
+trait CursorEvalFunction extends EvalFunction {
+  def apply(u: LispContext): LispContext = {
+    val a = eval(u)
+    val r = a.run(u.param.cursor(specification))
+    u.toResult(r)
   }
+
+  def eval(u: LispContext): CursorResult
+
+  protected final def param_argument(name: String): FunctionSpecification.Parameter =
+    FunctionSpecification.Parameter(name, true)
+
+  protected final def param_argument_option(name: String): FunctionSpecification.Parameter =
+    FunctionSpecification.Parameter(name, false)
+
+  protected final def param_argument_int_option(name: String): FunctionSpecification.Parameter =
+    FunctionSpecification.Parameter(name, false)
 }
 
 trait ControlFunction extends LispFunction {
+  def kindName = "Control"
 }
 
 trait HeavyFunction extends LispFunction { // CPU bound
+  def kindName = "Heavy"
 }
 
 trait EffectFunction extends LispFunction {
+  def kindName = "Effect"
+
   def applyEffect(p: LispContext): UnitOfWorkFM[LispContext]
 }
 
 trait IoFunction extends EffectFunction { // I/O bound
+  override def kindName = "Io"
+
   protected final def execute_shell_command(
     p: LispContext
   ): SExpr = {
@@ -481,12 +515,17 @@ trait IoFunction extends EffectFunction { // I/O bound
 }
 
 trait AsyncIoFunction extends IoFunction { // I/O bound, implicit asynchronous in function
+  override def kindName = "AsyncIo"
 }
 
 trait SyncIoFunction extends IoFunction { // I/O bound, synchronous is required.
+  override def kindName = "SyncIo"
 }
 
 object LispFunction {
+  type ValidationResult = ValidationNel[SError, SExpr]
+  type CursorResult = State[Parameters.Cursor, ValidationResult]
+
   val PROP_HTTP_BASEURL = "http.baseurl"
   val PROP_HTTP_HEADER = "http.header"
 
@@ -523,7 +562,7 @@ object LispFunction {
     }
   }
 
-  case object Atom extends EvalFunction {
+  case object Atom extends ParameterEvalFunction {
     val specification = FunctionSpecification("atom", 1)
     def eval(p: Parameters) = {
       val x = p.argument1[SExpr](specification)
@@ -531,7 +570,7 @@ object LispFunction {
     }
   }
 
-  case object Eq extends EvalFunction {
+  case object Eq extends ParameterEvalFunction {
     val specification = FunctionSpecification("eq", 2)
     def eval(p: Parameters) = {
       val (lhs, rhs) = p.argument2[SExpr, SExpr](specification)
@@ -539,7 +578,7 @@ object LispFunction {
     }
   }
 
-  case object Cons extends EvalFunction {
+  case object Cons extends ParameterEvalFunction {
     val specification = FunctionSpecification("cons", 2)
     def eval(p: Parameters) = {
       val (lhs, rhs) = p.argument2[SExpr, SExpr](specification)
@@ -561,7 +600,7 @@ object LispFunction {
     }
   }
 
-  case object Car extends EvalFunction {
+  case object Car extends ParameterEvalFunction {
     val specification = FunctionSpecification("car", 1)
     def eval(p: Parameters) =
       p.arguments.headOption.map {
@@ -570,7 +609,7 @@ object LispFunction {
       }.getOrElse(SError("Empty list"))
   }
 
-  case object Cdr extends EvalFunction {
+  case object Cdr extends ParameterEvalFunction {
     val specification = FunctionSpecification("cdr", 1)
     def eval(p: Parameters) =
       p.arguments.headOption.map {
@@ -614,12 +653,12 @@ object LispFunction {
     }
   }
 
-  case object ListFunc extends EvalFunction {
+  case object ListFunc extends ParameterEvalFunction {
     val specification = FunctionSpecification("list")
     def eval(p: Parameters) = SList.create(p.arguments)
   }
 
-  case object And extends EvalFunction {
+  case object And extends ParameterEvalFunction {
     val specification = FunctionSpecification("and")
     def eval(p: Parameters) = {
       @annotation.tailrec
@@ -632,7 +671,7 @@ object LispFunction {
     }
   }
 
-  case object Or extends EvalFunction {
+  case object Or extends ParameterEvalFunction {
     val specification = FunctionSpecification("or")
     def eval(p: Parameters) = {
       @annotation.tailrec
@@ -645,7 +684,7 @@ object LispFunction {
     }
   }
 
-  case object Equal extends EvalFunction {
+  case object Equal extends ParameterEvalFunction {
     val specification = FunctionSpecification("=", 2)
 
     def eval(p: Parameters) = _equal(p.arguments(0), p.arguments(1))
@@ -653,7 +692,7 @@ object LispFunction {
     private def _equal(l: SExpr, r: SExpr): SExpr = SBoolean(l == r)
   }
 
-  case object Plus extends EvalFunction {
+  case object Plus extends ParameterEvalFunction {
     val specification = FunctionSpecification("+", 2)
 
     def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
@@ -674,7 +713,7 @@ object LispFunction {
     }
   }
 
-  case object Minus extends EvalFunction {
+  case object Minus extends ParameterEvalFunction {
     val specification = FunctionSpecification("-", 2)
 
     def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
@@ -693,7 +732,7 @@ object LispFunction {
     }
   }
 
-  case object Multify extends EvalFunction {
+  case object Multify extends ParameterEvalFunction {
     val specification = FunctionSpecification("*", 2)
 
     def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
@@ -714,7 +753,7 @@ object LispFunction {
     }
   }
 
-  case object Divide extends EvalFunction {
+  case object Divide extends ParameterEvalFunction {
     val specification = FunctionSpecification("/", 2)
 
     def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
@@ -734,7 +773,7 @@ object LispFunction {
     }
   }
 
-  case object Length extends EvalFunction {
+  case object Length extends ParameterEvalFunction {
     val specification = FunctionSpecification("length", 1)
     def eval(p: Parameters) = {
       val r = p.arguments.map {
@@ -746,7 +785,7 @@ object LispFunction {
     }
   }
 
-  case object Inv extends EvalFunction {
+  case object Inv extends ParameterEvalFunction {
     val specification = FunctionSpecification("inv", 1)
     def eval(p: Parameters) = {
       val a = p.argument1[IMatrix[Double]](specification)
@@ -821,7 +860,7 @@ object LispFunction {
     }
   }
 
-  case object Pop extends LispFunction {
+  case object Pop extends ApplyFunction {
     val specification = FunctionSpecification("pop")
     def apply(p: LispContext): LispContext = {
       val params = p.parameters
@@ -829,7 +868,7 @@ object LispFunction {
     }
   }
 
-  case object Peek extends LispFunction {
+  case object Peek extends ApplyFunction {
     val specification = FunctionSpecification("peek")
     def apply(p: LispContext): LispContext = {
       val params = p.parameters
@@ -838,12 +877,12 @@ object LispFunction {
     }
   }
 
-  case object Mute extends EvalFunction {
+  case object Mute extends ParameterEvalFunction {
     val specification = FunctionSpecification("mute")
     def eval(p: Parameters) = SMute(p.head)
   }
 
-  case object History extends LispFunction {
+  case object History extends ApplyFunction {
     val specification = FunctionSpecification("history")
     def apply(p: LispContext): LispContext = {
       val params = p.parameters
@@ -853,7 +892,7 @@ object LispFunction {
   }
 
   // TODO
-  case object CommandHistory extends LispFunction { // XXX call, invoke, request, command ?
+  case object CommandHistory extends ApplyFunction { // XXX call, invoke, request, command ?
     val specification = FunctionSpecification("command-history")
     def apply(p: LispContext): LispContext = {
       val params = p.parameters
@@ -862,7 +901,7 @@ object LispFunction {
     }
   }
 
-  case object PathGet extends EvalFunction with ResolvedParametersFeature {
+  case object PathGet extends ParameterEvalFunction {
     import javax.xml.namespace.QName
     import javax.xml.xpath._
     import org.apache.commons.jxpath._
@@ -1086,7 +1125,7 @@ object LispFunction {
     // }
   }
 
-  case object Transform extends EvalFunction {
+  case object Transform extends ParameterEvalFunction {
     val specification = FunctionSpecification("transform")
 
     def eval(p: Parameters) = {
@@ -1106,7 +1145,7 @@ object LispFunction {
     }
   }
 
-  case object Xslt extends LispFunction {
+  case object Xslt extends ApplyFunction {
     val specification = FunctionSpecification("xslt")
 
     def apply(p: LispContext): LispContext = {
@@ -1140,18 +1179,63 @@ object LispFunction {
     }
   }
 
-  case object Select extends EvalFunction {
-    val specification = FunctionSpecification("select", 2)
+  /*
+   * select [projection] :from [table] :join [join] :where [query] :orderby [orderby] :limit [limit]
+   * select [projection] [table]
+   */
+  case object Select extends CursorEvalFunction {
+    val specification = FunctionSpecification("select",
+      param_argument("projection"),
+      param_argument("from"),
+      param_argument_option("join"),
+      param_argument_option("where"),
+      param_argument_option("orderby"),
+      param_argument_int_option("start"),
+      param_argument_int_option("limit")
+    )
 
-    def eval(p: Parameters) = {
-      val value = p.arguments(1)
-      p.arguments(0) match {
-        case m: SList => _select(m, value)
-        case m => SError.invalidArgumentFault(s"No form: $m")
+    // protected final def param_arguments = State[Parameters.Cursor, ValidationNel[SError, List[SExpr]]](_.arguments)
+
+    def eval(u: LispContext): CursorResult =
+      for {
+        p <- u.param.take('projection)
+        f <- u.param.take('from)
+        j <- u.param.get('join)
+        w <- u.param.get('where)
+        o <- u.param.get('orderby)
+        s <- u.param.getInt('start)
+        l <- u.param.getInt('limit)
+      } yield {
+        (p |@| f |@| j |@| w |@| o |@| s |@| l) { (projection, from, join, where, orderby, start, limit) =>
+          _select(projection, from, join, where, orderby, start,limit)
+        }
+      }
+
+    private def _select(
+      projection: SExpr,
+      from: SExpr,
+      join: Option[SExpr],
+      where: Option[SExpr],
+      orderby: Option[SExpr],
+      start: Option[Int],
+      limit: Option[Int]
+    ): SExpr = {
+      projection match {
+        case m: SList => _select(m, from)
+        case m => RAISE.notImplementedYetDefect
       }
     }
 
-    private def _select(form: SList, p: SExpr) = {
+    private def _select(form: SList, p: SExpr) = p match {
+      case m: STable => _select_table(form, m)
+      case _ => _select_list(form, p)
+    }
+
+    private def _select_table(form: SList, p: STable) = {
+      ???
+    }
+
+    private def _select_list(form: SList, p: SExpr) = {
       val rs = for (x <- form.list) yield x match {
         case m: SXPath => _select_path(m, p)
         case m: SString => _select_string(m, p)
@@ -1288,7 +1372,7 @@ object LispFunction {
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
   }
 
-  case object VectorVerticalFill extends EvalFunction {
+  case object VectorVerticalFill extends ParameterEvalFunction {
     val specification = FunctionSpecification("vector-vertical-fill", 2)
 
     def eval(p: Parameters) = {
@@ -1297,7 +1381,7 @@ object LispFunction {
     }
   }
 
-  case object MatrixHorizontalConcatenate extends EvalFunction {
+  case object MatrixHorizontalConcatenate extends ParameterEvalFunction {
     val specification = FunctionSpecification("matrix-horizontal-concatenate", 2)
 
     def eval(p: Parameters) = {
@@ -1396,7 +1480,7 @@ object LispFunction {
       )
   }
 
-  case object TableMatrix extends EvalFunction {
+  case object TableMatrix extends ParameterEvalFunction {
     val specification = FunctionSpecification("table-matrix", 1)
 
     def eval(p: Parameters): SExpr = {

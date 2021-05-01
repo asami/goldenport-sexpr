@@ -3,14 +3,15 @@ package org.goldenport.sexpr.eval
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
 import org.goldenport.RAISE
+import org.goldenport.collection.NonEmptyVector
+import org.goldenport.collection.VectorMap
 import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{IRecord, Record, RecordSequence, Table}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.record.query.QueryExpression
-import org.goldenport.collection.NonEmptyVector
 import org.goldenport.sexpr._
-import org.goldenport.sexpr.SExprConverter._
+// import org.goldenport.sexpr.SExprConverter._
 import org.goldenport.value._
 
 /*
@@ -29,17 +30,25 @@ import org.goldenport.value._
  *  version Feb. 29, 2020
  *  version Mar. 30, 2020
  *  version Jan. 16, 2021
- * @version Mar. 21, 2021
+ *  version Mar. 21, 2021
+ * @version Apr. 12, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
-  arguments: List[SExpr],
+  argumentVector: Vector[Parameters.Argument],
   properties: Map[Symbol, SExpr],
   switches: Set[Symbol]
 ) {
   def show = "Paramerters()" // TODO
 
-  def isEmptyArguments: Boolean = arguments.isEmpty
+  def isEmptyArguments: Boolean = argumentVector.isEmpty
+
+  def isError: Boolean = isEmptyArguments || isErrorProperties
+
+  def isErrorArguments: Boolean = arguments.exists(_.isInstanceOf[SError])
+  def isErrorProperties: Boolean = properties.values.exists(_.isInstanceOf[SError])
+
+  lazy val arguments: List[SExpr] = argumentVector.toList.map(_.value)
 
   def head: SExpr = argumentOneBased(1)
 
@@ -85,19 +94,27 @@ case class Parameters(
     spec: FunctionSpecification
   )(implicit a: SExprConverter[A]): Option[A] = getArgumentOneBased(1).map(a.apply)
 
-  def argumentsUsingProperties(ps: Seq[String]): List[SExpr] = {
+  def argumentsUsingProperties(ps: Seq[String]): List[SExpr] =
+    argumentVectorUsingProperties(ps).map(_.value).toList
+
+  def argumentVectorUsingProperties(ps: Seq[String]): Vector[Parameters.Argument] = {
     case class Z(
       args: List[SExpr] = arguments,
-      results: Vector[SExpr] = Vector.empty
+      results: Vector[Parameters.Argument] = Vector.empty
     ) {
-      def r = results.toList ::: args
+      def r = {
+        val xs: Seq[Parameters.Argument] = args.map(Parameters.Argument.apply)
+        results ++ xs
+      }
 
       def +(rhs: String) = getProperty(rhs).
-        map(x => copy(results = results :+ x)).
-        getOrElse(args match {
-          case Nil => this
-          case x :: xs => copy(args = xs, results = results :+ x)
-        })
+        map(x => copy(results = results :+ Parameters.Argument(rhs, x))).
+        getOrElse {
+          args match {
+            case Nil => this
+            case x :: xs => copy(args = xs, results = results :+ Parameters.Argument(rhs, x))
+          }
+        }
     }
     ps./:(Z())(_+_).r
   }
@@ -105,12 +122,15 @@ case class Parameters(
   def asStringList: List[String] = arguments.map(_.asString)
   def asBigDecimalList: List[BigDecimal] = arguments.map(_.asBigDecimal)
 
-  def getProperty(p: Symbol): Option[SExpr] = properties.get(p)
+  def getProperty(p: Symbol): Option[SExpr] = properties.get(p) orElse argumentVector.toStream.flatMap {
+    case Parameters.NamedArgument(k, v) if p == k => Some(v)
+    case _ => None
+  }.headOption
   def getProperty(p: String): Option[SExpr] = getProperty(Symbol(p))
   def getPropertyString(p: Symbol): Option[String] = getProperty(p).map {
     case SString(s) => s
     case SAtom(n) => n
-    case m => SError.invalidDatatype(p.name, m)
+    case m => SError.invalidDatatype(p.name, m).RAISE
   }
   def getPropertyStringList(p: Symbol): List[String] = getProperty(p).map {
     case SString(s) => List(s)
@@ -124,6 +144,16 @@ case class Parameters(
   }.getOrElse(Nil)
   def getPropertySymbol(p: Symbol): Option[Symbol] = getPropertyString(p).map(Symbol(_))
   def getPropertySymbolList(p: Symbol): List[Symbol] = getPropertyStringList(p).map(Symbol(_))
+  def getPropertyInt(p: Symbol): Option[Int] = getPropertyIntRigid(p)
+  def getPropertyIntRigid(p: Symbol): Option[Int] = getProperty(p).map {
+    case SNumber(s) => s.toInt
+    case m => SError.invalidDatatype(p.name, m).RAISE
+  }
+  def getPropertyIntEager(p: Symbol): Option[Int] = getProperty(p).map {
+    case SNumber(s) => s.toInt
+    case SString(s) => s.toInt
+    case m => SError.invalidDatatype(p.name, m).RAISE
+  }
 
   def isSwitch(p: Symbol): Boolean = switches.contains(p)
 
@@ -133,12 +163,6 @@ case class Parameters(
       case "label" => Table.HeaderStrategy.label
       case m => RAISE.invalidArgumentFault(s"Invalid table-header: $m.")
     }
-
-  def map(f: SExpr => SExpr): Parameters = copy(arguments = arguments.map(f))
-
-  def pop: Parameters = copy(arguments = arguments.tail)
-
-  def pop(count: Int): Parameters = copy(arguments = arguments.take(count))
 
   def uriSExpr: (SUri, SExpr) = {
     getArgumentOneBased(1).map {
@@ -155,14 +179,65 @@ case class Parameters(
       RAISE.invalidArgumentFault("Two arguments (SUri, SExpr) are required.")
     )
   }
+
+  def map(f: SExpr => SExpr): Parameters = copy(argumentVector = argumentVector.map(_.map(f)))
+
+  def pop: Parameters = copy(argumentVector = argumentVector.tail)
+
+  def pop(count: Int): Parameters = copy(argumentVector = argumentVector.take(count))
+
+  def resolve(p: FunctionSpecification): Parameters = {
+    val paramnames = p.parameters.argumentNames
+    val as = argumentVectorUsingProperties(paramnames)
+    // val ps = _parameters_using_arguments(paramnames, as)
+    // copy(argumentMap = as, properties = ps)
+    copy(argumentVector = as)
+  }
+
+  // private def _parameters_using_arguments(
+  //   paramnames: List[String],
+  //   args: VectorMap[Symbol, Parameters.Argument]
+  // ): Map[Symbol, SExpr] = {
+  //   case class Z(
+  //     props: Map[Symbol, SExpr] = properties
+  //   ) {
+  //     def r = ??? // props
+
+  //     def +(rhs: String) = {
+  //       val k = Symbol(rhs)
+  //       if (props.contains(k))
+  //         this
+  //       else
+  //         args.headOption.
+  //           map(x => copy(props = props + (k -> x))).
+  //           getOrElse(this)
+  //     }
+  //   }
+  //   paramnames./:(Z())(_+_).r
+  // }
 }
 
 object Parameters {
+  sealed trait Argument {
+    def value: SExpr
+    def map(f: SExpr => SExpr): Argument
+  }
+  case class NamedArgument(key: Symbol, value: SExpr) extends Argument {
+    def map(f: SExpr => SExpr) = copy(value = f(value))
+  }
+  case class AnonArgument(value: SExpr) extends Argument {
+    def map(f: SExpr => SExpr) = copy(value = f(value))
+  }
+  object Argument {
+    def apply(value: SExpr): Argument = AnonArgument(value)
+    def apply(name: String, value: SExpr): Argument = NamedArgument(Symbol(name), value)
+  }
+
   def apply(p: SList): Parameters = apply(p.list)
 
   def apply(ps: List[SExpr]): Parameters = {
     case class Z(
-      as: Vector[SExpr] = Vector.empty,
+      args: Vector[SExpr] = Vector.empty,
       props: Map[Symbol, Vector[SExpr]] = Map.empty,
       switches: Set[Symbol] = Set.empty,
       keyword: Option[Symbol] = None
@@ -174,7 +249,8 @@ object Parameters {
           case _ => SList.create(xs)
         })
         val ss = keyword.fold(switches)(switches + _)
-        Parameters(as.toList, ps, ss)
+        val as = args.map(Argument.apply)
+        Parameters(as, ps, ss)
       }
       def +(rhs: SExpr) = keyword.map(k =>
         rhs match {
@@ -185,7 +261,7 @@ object Parameters {
       ).getOrElse(
         rhs match {
           case m: SKeyword => copy(keyword = Some(Symbol(m.name)))
-          case m => copy(as = as :+ m)
+          case m => copy(args = args :+ m)
         }
       )
     }
@@ -221,7 +297,7 @@ object Parameters {
       try {
         val r = parameters.argumentList(spec)(converter)
         val nextspec = spec // TODO
-        val nextparams = parameters.copy(arguments = Nil)
+        val nextparams = parameters.copy(argumentVector = Vector.empty)
         val nextcursor = Cursor(feature, nextspec, nextparams)
         (nextcursor, Success(r))
       } catch {
@@ -232,7 +308,7 @@ object Parameters {
       try {
         val r = parameters.argumentNonEmptyVector(spec)(converter)
         val nextspec = spec // TODO
-        val nextparams = parameters.copy(arguments = Nil)
+        val nextparams = parameters.copy(argumentVector = Vector.empty)
         val nextcursor = Cursor(feature, nextspec, nextparams)
         (nextcursor, Success(r))
       } catch {
@@ -345,18 +421,6 @@ object Parameters {
       to_result_pop(nextspec, r)
     }
 
-    def powertypeOption[T <: ValueInstance](key: Symbol, powertypeclass: ValueClass[T]): (Cursor, ValidationNel[SError, Option[T]]) = {
-      val nextspec = spec // TODO
-      parameters.getPropertySymbol(key).
-        map { x =>
-          powertypeclass.get(x.name).
-            map(y => to_success(nextspec, Some(y))).
-            getOrElse(to_error(nextspec, SError.invalidArgument(key.name, x.toString)))
-        }.getOrElse {
-          to_success(nextspec, None)
-        }
-    }
-
     // TODO unordered parameters
     def table(u: LispContext): (Cursor, ValidationNel[SError, STable]) = {
       val t = parameters.arguments(0) match {
@@ -378,11 +442,83 @@ object Parameters {
       to_result(nextspec, r)
     }
 
+    /*
+     * Property
+     */
+    def take(key: Symbol): (Cursor, ValidationNel[SError, SExpr]) = {
+      val r = parameters.getProperty(key) match {
+        case Some(s) => Success(s).toValidationNel
+        case None => Failure(SError.missingArgumentFault(key.name)).toValidationNel
+      }
+      val nextspec = spec // TODO
+      to_result(nextspec, r)
+    }
+
+    def get(key: Symbol): (Cursor, ValidationNel[SError, Option[SExpr]]) = {
+      val x = parameters.getProperty(key)
+      val r = Success(x).toValidationNel
+      val nextspec = spec // TODO
+      to_result(nextspec, r)
+    }
+
+    /*
+     * Property Value
+     */
+    def getInt(key: Symbol): (Cursor, ValidationNel[SError, Option[Int]]) = {
+      val x = parameters.getPropertyInt(key)
+      val r = Success(x).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
     def propertyStringList(key: Symbol): (Cursor, ValidationNel[SError, List[String]]) = {
       val x = parameters.getPropertyStringList(key)
       val r = Success(x).toValidationNel
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
+
+    def powertypeOption[T <: ValueInstance](key: Symbol, powertypeclass: ValueClass[T]): (Cursor, ValidationNel[SError, Option[T]]) = {
+      val nextspec = spec // TODO
+      parameters.getPropertySymbol(key).
+        map { x =>
+          powertypeclass.get(x.name).
+            map(y => to_success(nextspec, Some(y))).
+            getOrElse(to_error(nextspec, SError.invalidArgument(key.name, x.toString)))
+        }.getOrElse {
+          to_success(nextspec, None)
+        }
+    }
+  }
+  object Cursor {
+    // def arguments = State[Cursor, ValidationNel[SError, List[SExpr]]](_.arguments)
+
+    // def argumentList[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, List[A]]](_.argumentList)
+
+    // def argumentNonEmptyVector[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, NonEmptyVector[A]]](_.argumentNonEmptyVector)
+
+    // def argument1[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, A]](_.argument1)
+
+    // def storeCollection = State[Cursor, ValidationNel[SError, Collection]](_.storeCollection)
+
+    // def idForStore = State[Cursor, ValidationNel[SError, Id]](_.idForStore)
+
+    // def schema(p: LispContext) = State[Cursor, ValidationNel[SError, Schema]](_.schema(p))
+
+    // def query = State[Cursor, ValidationNel[SError, Query]](_.query)
+
+    // def queryDefault = State[Cursor, ValidationNel[SError, Query]](_.queryDefault)
+
+    // def record = State[Cursor, ValidationNel[SError, Record]](_.record)
+
+    // def records = State[Cursor, ValidationNel[SError, RecordSequence]](_.records)
+
+    // def powertypeOption[T <: ValueInstance](key: Symbol, powertypeclass: ValueClass[T]) = State[Cursor, ValidationNel[SError, Option[T]]](_.powertypeOption(key, powertypeclass))
+
+    // def table(u: LispContext) = State[Cursor, ValidationNel[SError, STable]](_.table(u))
+
+    // def tableHeader(u: LispContext) = State[Cursor, ValidationNel[SError, Option[Table.HeaderStrategy]]](_.tableHeader(u))
+
+    // def propertyStringList(key: Symbol) = State[Cursor, ValidationNel[SError, List[String]]](_.propertyStringList(key))
   }
 }
