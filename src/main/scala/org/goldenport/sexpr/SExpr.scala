@@ -16,8 +16,9 @@ import play.api.libs.json._
 import org.goldenport.RAISE
 import org.goldenport.Strings
 import org.goldenport.parser._
-import org.goldenport.context.{StatusCode, Conclusion}
+import org.goldenport.context.{StatusCode, Conclusion, Consequence}
 import org.goldenport.i18n.{I18NString, I18NTemplate}
+import org.goldenport.i18n.I18NMessage
 import org.goldenport.console.Message
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.extension.IWindow
@@ -79,7 +80,8 @@ import org.goldenport.sexpr.eval.spark.SparkDataFrame
  *  version Jan. 31, 2021
  *  version Feb. 25, 2021
  *  version Mar. 18, 2021
- * @version Apr. 25, 2021
+ *  version Apr. 25, 2021
+ * @version May. 30, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -105,7 +107,9 @@ sealed trait SExpr extends Showable {
 
   /* Natural representation for data. Show as-is even large data. */
   /* SString("apple") => apple */
-  lazy val print: String = try {
+  def print: String = print_value
+  lazy protected val print_value: String = print_make
+  protected def print_make: String = try {
     SExpr.toPrint(print_String)
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#print[$e]"
@@ -126,8 +130,9 @@ sealed trait SExpr extends Showable {
 
   /* 1 line representation for interaction representation (e.g. REPL). */
   /* SString("apple") => "apple" */
-  def display: String = _display
-  private lazy val _display = try {
+  def display: String = display_value
+  protected lazy val display_value = display_make
+  protected def display_make = try {
     SExpr.toDisplay(display_String)
   } catch {
     case NonFatal(e) => s"${getClass.getSimpleName}#display[$e]"
@@ -143,11 +148,15 @@ sealed trait SExpr extends Showable {
   def titleName: String = _title_name
   def titleInfo: String = ""
   def titleDescription: String = ""
-  lazy val title = titleInfo match {
+  def title: String = title_value
+  lazy protected val title_value = title_make
+  protected def title_make = titleInfo match {
     case "" => s"${titleName}"
     case i => s"${titleName}[$i]"
   }
-  lazy val longTitle: String = {
+  def longTitle: String = long_title_value
+  protected val long_title_value: String = long_title
+  protected def long_title: String = {
     (titleInfo, titleDescription) match {
       case ("", "") => s"${titleName}"
       case ("", d) => s"${titleName}:$d"
@@ -158,7 +167,9 @@ sealed trait SExpr extends Showable {
 
   /* Show a shortened natural representation with some information for debug. */
   /* SString("apple") => SString[5]: apple */
-  lazy val show: String = try {
+  def show: String = show_value
+  lazy protected val show_value: String = show_make
+  protected def show_make: String = try {
     val title = s"[$longTitle]"
     show_Content.fold(title) { s =>
       val a = SExpr.toShow(s)
@@ -174,14 +185,16 @@ sealed trait SExpr extends Showable {
   }
   protected def show_Content: Option[String] = getString // for debug
 
-  private lazy val _description = _full_description.toShort
+  protected lazy val description_value = description_make
+  protected def description_make = full_description.toShort
 
   /*
    * Show natural description of the data.
    */
-  def description: SExpr.Description = _description
+  def description: SExpr.Description = description_value
   def descriptionContent: Seq[String] = SExpr.toFull(getString)
-  private lazy val _full_description = {
+  protected lazy val full_description_value = full_description
+  protected def full_description = {
     val c = descriptionContent
     if (descriptionContent.isEmpty)
       SExpr.Description(longTitle, c)
@@ -192,7 +205,7 @@ sealed trait SExpr extends Showable {
   /*
    * Show full description of the data.
    */
-  def fullDescription: SExpr.Description = _full_description
+  def fullDescription: SExpr.Description = full_description
 
   /*
    * Show short representation to embeded in container format like table.
@@ -514,7 +527,7 @@ case class SError(
   stderr: Option[SBlob] = None
 ) extends SExpr {
   def exception = conclusion.exception
-  def label = conclusion.message.map(_.en)
+  def label = Some(message)
 
   def RAISE: Nothing = throw new SError.SErrorException(this)
 
@@ -556,6 +569,10 @@ object SError {
   private def _internal_server_error = Conclusion.InternalServerError
   private def _not_implemented = Conclusion.NotImplemented
   private def _no_reach = Conclusion.NoReach
+  private def _invariant = Conclusion.Invariant
+  private def _pre_condition = Conclusion.PreCondition
+  private def _pre_condition_state = Conclusion.PreConditionState
+  private def _post_condition = Conclusion.PostCondition
 
   def apply(conclusion: Conclusion, msg: String): SError = SError(conclusion.withMessage(msg))
   def apply(p: String): SError = SError(_internal_server_error)
@@ -600,6 +617,11 @@ object SError {
     SError(_not_found, s)
   }
 
+  def notFound(key: Symbol): SError = {
+    val s = s"'${key.name}' is not found."
+    SError(_not_found, s)
+  }
+
   def functionNotFound(p: SAtom): SError = functionNotFound(p.name)
 
   def functionNotFound(name: String): SError = {
@@ -640,6 +662,22 @@ object SError {
     SError(_bad_request, label)
   }
 
+  def invariant(): SError = SError(_invariant)
+  def invariant(p: SExpr): SError = RAISE.notImplementedYetDefect
+  def invariant(p: SMessage): SError = RAISE.notImplementedYetDefect
+
+  def preCondition(): SError = SError(_pre_condition)
+  def preCondition(p: SExpr): SError = RAISE.notImplementedYetDefect
+  def preCondition(p: SMessage): SError = RAISE.notImplementedYetDefect
+
+  def preConditionState(): SError = SError(_pre_condition_state)
+  def preConditionState(p: SExpr): SError = RAISE.notImplementedYetDefect
+  def preConditionState(p: SMessage): SError = RAISE.notImplementedYetDefect
+
+  def postCondition(): SError = SError(_post_condition)
+  def postCondition(p: SExpr): SError = RAISE.notImplementedYetDefect
+  def postCondition(p: SMessage): SError = RAISE.notImplementedYetDefect
+
   def notImplementedYetDefect(p: String): SError = SError(_not_implemented, p)
 
   def noReachDefect(p: String): SError = SError(_no_reach, p)
@@ -649,7 +687,7 @@ object SError {
     case m => m
   }
 
-  class SErrorException(val error: SError) extends RuntimeException(error.message) {
+  case class SErrorException(val error: SError) extends RuntimeException(error.message) {
   }
 }
 
@@ -699,6 +737,11 @@ case class SI18NTemplate(template: I18NTemplate) extends SExpr {
   override def getString = Some(template.toString)
   // def print = show
   // def show = template.toString
+}
+
+case class SMessage(
+  i18nMessage: I18NMessage
+) extends SExpr {
 }
 
 case class SRegex(regex: scala.util.matching.Regex) extends SExpr {
@@ -1558,7 +1601,15 @@ object SChartSeries {
 trait SExtension extends SExpr {
 }
 
-trait SControl extends SExpr {
+trait Mutable { self: SExpr =>
+  override def print = print_make
+  override def display = display_make
+  override def title = title_make
+  override def show = show_make
+  override def description = description_make
+}
+
+trait SControl extends SExpr with Mutable {
   override lazy val resolve = resolveContext.value
   def resolveContext: LispContext
 }
@@ -1767,11 +1818,22 @@ object SExpr {
     case m => m
   }
 
-  def createOrError[T <: SExpr](p: => T): SExpr = try {
+  def run[T <: SExpr](p: => Consequence[T]): SExpr = try {
+    p match {
+      case Consequence.Success(r, c) => r
+      case Consequence.Error(c) => SError(c)
+    }
+  } catch {
+    case NonFatal(e) => SError(e)
+  }
+
+  def execute[T <: SExpr](p: => T): SExpr = try {
     p
   } catch {
     case NonFatal(e) => SError(e)
   }
+
+  def createOrError[T <: SExpr](p: => T): SExpr = execute(p)
 
   def parseOrError[T <: SExpr](p: => ParseResult[T]): SExpr = try {
     p match {
@@ -1923,10 +1985,6 @@ object SExpr {
     } else {
       s
     }
-
-  def run(p: => SExpr): SExpr = try(p) catch {
-    case NonFatal(e) => SError(e)
-  }
 
   object Implicits {
     implicit object SExprToSExpr extends PartialFunction[SExpr, SExpr] {

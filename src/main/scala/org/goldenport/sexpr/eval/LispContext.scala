@@ -49,7 +49,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Jan. 16, 2021
  *  version Feb. 25, 2021
  *  version Mar. 12, 2021
- * @version Apr. 13, 2021
+ *  version Apr. 13, 2021
+ * @version May.  9, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
@@ -152,6 +153,8 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
     val r = eval(s)
     condition(r)
   }
+
+  def evalCondition(value: SExpr): Boolean = condition(eval(value))
 
   def condition(value: SExpr): Boolean = value match {
     case SNil => false

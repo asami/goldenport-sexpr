@@ -31,7 +31,8 @@ import org.goldenport.value._
  *  version Mar. 30, 2020
  *  version Jan. 16, 2021
  *  version Mar. 21, 2021
- * @version Apr. 12, 2021
+ *  version Apr. 12, 2021
+ * @version May. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -132,6 +133,10 @@ case class Parameters(
     case SAtom(n) => n
     case m => SError.invalidDatatype(p.name, m).RAISE
   }
+  def getPropertyStringStrict(p: Symbol): Option[String] = getProperty(p).map {
+    case SString(s) => s
+    case m => SError.invalidDatatype(p.name, m).RAISE
+  }
   def getPropertyStringList(p: Symbol): List[String] = getProperty(p).map {
     case SString(s) => List(s)
     case SAtom(n) => List(n)
@@ -154,6 +159,22 @@ case class Parameters(
     case SString(s) => s.toInt
     case m => SError.invalidDatatype(p.name, m).RAISE
   }
+
+  def fetchPropertyString(p: Symbol): ValidationNel[SError, String] =
+    fetch_property(p)(_ match {
+      case SString(s) => Success(s).toValidationNel
+      case SAtom(n) => Success(n).toValidationNel
+      case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
+    })
+
+  def fetchPropertyStringStrict(p: Symbol): ValidationNel[SError, String] =
+    fetch_property(p)(_ match {
+      case SString(s) => Success(s).toValidationNel
+      case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
+    })
+
+  protected def fetch_property[T](p: Symbol)(body: SExpr => ValidationNel[SError, T]): ValidationNel[SError, T] = 
+    getProperty(p).map(body).getOrElse(Failure(SError.notFound(p)).toValidationNel)
 
   def isSwitch(p: Symbol): Boolean = switches.contains(p)
 
@@ -291,6 +312,19 @@ object Parameters {
     protected def to_error[T](newspec: FunctionSpecification, e: SError): (Cursor, ValidationNel[SError, T]) =
       (copy(spec = newspec), Failure(NonEmptyList(e)))
 
+    protected def run_cursor[T](body: => ValidationNel[SError, T]): (Cursor, ValidationNel[SError, T]) = try {
+      val r = body
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    } catch {
+      case SError.SErrorException(e) =>
+        val nextspec = spec // TODO
+        to_result_pop(nextspec, Failure(e).toValidationNel)
+      case NonFatal(e) => 
+        val nextspec = spec // TODO
+        to_result_pop(nextspec, Failure(SError(e)).toValidationNel)
+    }
+
     def arguments: (Cursor, ValidationNel[SError, List[SExpr]]) = argumentList[SExpr]
 
     def argumentList[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, List[A]]) =
@@ -346,12 +380,8 @@ object Parameters {
 
     def schema(p: LispContext): (Cursor, ValidationNel[SError, Schema]) = {
       val r = parameters.arguments(0) match {
-        case SString(name) =>
-          p.bindings.get(name).orElse(p.bindings.get(s"model.voucher.$name")).map {
-            case m: SSchema => Success(m.schema).toValidationNel
-            case m: Schema => Success(m).toValidationNel
-            case m => RAISE.notImplementedYetDefect
-          }.getOrElse(RAISE.notImplementedYetDefect)
+        case SString(name) => _schema(p, name)
+        case SAtom(name) => _schema(p, name)
         case m: SSchema => Success(m.schema).toValidationNel
         case m: Schema => Success(m).toValidationNel
         case m => RAISE.notImplementedYetDefect(s"Parameters#schema: $m")
@@ -359,6 +389,16 @@ object Parameters {
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
+
+    private def _schema(p: LispContext, name: String) =
+      p.bindings.get(name).orElse(_schema_in_binding(p.bindings, name)).map {
+        case m: SSchema => Success(m.schema).toValidationNel
+        case m: Schema => Success(m).toValidationNel
+        case m => RAISE.notImplementedYetDefect
+      }.getOrElse(RAISE.notImplementedYetDefect)
+
+    private def _schema_in_binding(p: IRecord, name: String): Option[Any] =
+      p.get(s"model.schema.$name") orElse p.get(s"model.voucher.$name")
 
     def query(implicit context: QueryExpression.Context): (Cursor, ValidationNel[SError, Query]) = {
       val query = parameters.arguments(0) match {
@@ -464,6 +504,14 @@ object Parameters {
     /*
      * Property Value
      */
+    def takeString(key: Symbol): (Cursor, ValidationNel[SError, String]) = run_cursor {
+      parameters.fetchPropertyString(key)
+    }
+
+    def takeStringStrict(key: Symbol): (Cursor, ValidationNel[SError, String]) = run_cursor {
+      parameters.fetchPropertyStringStrict(key)
+    }
+
     def getInt(key: Symbol): (Cursor, ValidationNel[SError, Option[Int]]) = {
       val x = parameters.getPropertyInt(key)
       val r = Success(x).toValidationNel

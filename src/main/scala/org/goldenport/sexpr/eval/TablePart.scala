@@ -27,7 +27,8 @@ import org.goldenport.sexpr._
  *  version Jan. 26, 2020
  *  version Feb. 29, 2020
  *  version Feb. 20, 2021
- * @version Mar.  8, 2021
+ *  version Mar.  8, 2021
+ * @version May. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait TablePart { self: LispFunction =>
@@ -161,7 +162,7 @@ trait TablePart { self: LispFunction =>
     table_save(u, file, _table(p))
 
   protected final def table_save(u: LispContext, file: File, p: ITable): SExpr =
-    SExpr.run {
+    SExpr.execute {
       val data = p.matrix.columnIterator.map(_.map(_.toString)).toVector
       val strategy = csv_strategy(u.config).withSchema(p.schema)
       val csv = CsvBag.create(file, strategy)

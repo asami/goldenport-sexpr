@@ -41,7 +41,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Jan. 16, 2021
  *  version Feb. 25, 2021
  *  version Mar. 21, 2021
- * @version Apr. 20, 2021
+ *  version Apr. 20, 2021
+ * @version May. 10, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -339,6 +340,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       Quote, Setq, Cond, If,
       ListFunc, And, Or,
       Equal,
+      Assert, Assume, Require, Ensuring,
       Plus, Minus, Multify, Divide,
       Length,
       Inv,
@@ -354,7 +356,8 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
     ) ++ EmacsLispFunction.functions ++ SchemeFunction.functions ++
     _sql_functions ++ _store_functions ++ _entity_functions ++ _repository_functions ++
     _chart_functions ++
-    _projector_functions ++ _camel_functions ++ _aws_functions ++ _sci_functions ++ _spark_functions
+    _projector_functions ++ _camel_functions ++ _aws_functions ++ _sci_functions ++ _spark_functions ++
+    extension_Functions
   }
 
   private def _sql_functions = 
@@ -412,6 +415,8 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       SparkFunction.functions
     else
       Vector.empty
+
+  protected def extension_Functions: Seq[LispFunction] = Nil
 
   protected def functions_Pf: PartialFunction[C, LispFunction] = Map.empty
   protected def get_Function(c: C): Option[LispFunction] = None

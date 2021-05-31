@@ -70,6 +70,10 @@ trait ParameterPart { self: LispContext =>
     /*
      * Property Vaue
      */
+    def takeString(key: Symbol) = State[Cursor, ValidationNel[SError, String]](_.takeString(key))
+
+    def takeStringStrict(key: Symbol) = State[Cursor, ValidationNel[SError, String]](_.takeStringStrict(key))
+
     def getInt(key: Symbol) = State[Cursor, ValidationNel[SError, Option[Int]]](_.getInt(key))
 
     def propertyStringList(key: Symbol) = State[Cursor, ValidationNel[SError, List[String]]](_.propertyStringList(key))

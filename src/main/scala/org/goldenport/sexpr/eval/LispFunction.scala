@@ -12,6 +12,7 @@ import play.api.libs.json._
 import org.goldenport.Strings
 import org.goldenport.exception.RAISE
 import org.goldenport.context.Effect
+import org.goldenport.context.Consequence
 import org.goldenport.record.v3.{Record, ITable}
 import org.goldenport.record.unitofwork._
 import org.goldenport.record.unitofwork.UnitOfWork._
@@ -53,7 +54,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Jul. 20, 2020
  *  version Feb. 22, 2021
  *  version Mar. 21, 2021
- * @version Apr. 20, 2021
+ *  version Apr. 20, 2021
+ * @version May. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -627,7 +629,7 @@ object LispFunction {
 
     private def _cond(ctx: LispContext)(p: SExpr): Option[SExpr] = p match {
       case SCell(car, cdr) =>
-        if (ctx.condition(car))
+        if (ctx.evalCondition(car))
           Some(ctx.eval(_value(cdr)))
         else
           None
@@ -645,7 +647,7 @@ object LispFunction {
     def apply(p: LispContext) = {
       val (pred, thenpart) = p.parameters.argument2[SExpr, SExpr](specification)
       def elsepart = p.parameters.arguments.lift(2).getOrElse(SNil)
-      val r = if (p.condition(pred))
+      val r = if (p.evalCondition(pred))
         thenpart
       else
         elsepart
@@ -690,6 +692,82 @@ object LispFunction {
     def eval(p: Parameters) = _equal(p.arguments(0), p.arguments(1))
 
     private def _equal(l: SExpr, r: SExpr): SExpr = SBoolean(l == r)
+  }
+
+  // invariant
+  case object Assert extends CursorEvalFunction {
+    val specification = FunctionSpecification("assert",
+      param_argument("predicate"),
+      param_argument("target")
+    )
+
+    def eval(u: LispContext): CursorResult = for {
+      pred <- u.param.take('predicate)
+      target <- u.param.take('target)
+    } yield (pred |@| target)(_assert(u))
+
+    private def _assert(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
+      if (u.evalCondition(pred))
+        target
+      else
+        SError.invariant(target)
+  }
+
+  // pre-condition (callee responsibility)
+  case object Assume extends CursorEvalFunction {
+    val specification = FunctionSpecification("assume",
+      param_argument("predicate"),
+      param_argument("target")
+    )
+
+    def eval(u: LispContext): CursorResult = for {
+      pred <- u.param.take('predicate)
+      target <- u.param.take('target)
+    } yield (pred |@| target)(_assume(u))
+
+    private def _assume(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
+      if (u.evalCondition(pred))
+        target
+      else
+        SError.preConditionState(target)
+  }
+
+  // pre-condition (caller responsibility)
+  case object Require extends CursorEvalFunction {
+    val specification = FunctionSpecification("require",
+      param_argument("predicate"),
+      param_argument("target")
+    )
+
+    def eval(u: LispContext): CursorResult = for {
+      pred <- u.param.take('predicate)
+      target <- u.param.take('target)
+    } yield (pred |@| target)(_require(u))
+
+    private def _require(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
+      if (u.evalCondition(pred))
+        target
+      else
+        SError.preCondition(target)
+  }
+
+  // post-condition
+  case object Ensuring extends CursorEvalFunction {
+    val specification = FunctionSpecification("ensuring",
+      param_argument("predicate"),
+      param_argument("target")
+    )
+
+    def eval(u: LispContext): CursorResult = for {
+      pred <- u.param.take('predicate)
+      target <- u.param.take('target)
+    } yield (pred |@| target)(_ensuring(u))
+
+    private def _ensuring(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
+      if (u.evalCondition(pred))
+        target
+      else
+        SError.postCondition(target)
   }
 
   case object Plus extends ParameterEvalFunction {
@@ -1206,9 +1284,10 @@ object LispFunction {
         s <- u.param.getInt('start)
         l <- u.param.getInt('limit)
       } yield {
-        (p |@| f |@| j |@| w |@| o |@| s |@| l) { (projection, from, join, where, orderby, start, limit) =>
-          _select(projection, from, join, where, orderby, start,limit)
-        }
+        // (p |@| f |@| j |@| w |@| o |@| s |@| l) { (projection, from, join, where, orderby, start, limit) =>
+        //   _select(projection, from, join, where, orderby, start,limit)
+        // }
+        (p |@| f |@| j |@| w |@| o |@| s |@| l)(_select)
       }
 
     private def _select(
@@ -1231,7 +1310,37 @@ object LispFunction {
       case _ => _select_list(form, p)
     }
 
-    private def _select_table(form: SList, p: STable) = {
+    private def _select_table(form: SList, p: STable): SExpr = {
+      val names = form.list.traverse {
+        case m: SXPath => _select_path(m, p)
+        case m: SString => _select_string(m, p)
+        case m: SAtom => _select_atom(m, p)
+        case m => ??? // ConclusionResult.ParseFailure("???") // SError.invalidArgumentFault(s"Invalid form element: $m")
+      }
+      SExpr.run {
+        for (xs <- names) yield STable(p.table.select(xs))
+      }
+      // val names = for (x <- form.list) yield x match {
+      //   case m: SXPath => _select_path(m, p)
+      //   case m: SString => _select_string(m, p)
+      //   case m: SAtom => _select_atom(m, p)
+      //   case m => SError.invalidArgumentFault(s"Invalid form element: $m")
+      // }
+      // STable(p.table.select(names))
+    }
+
+    private def _select_path(path: SXPath, p: STable): Consequence[String] = {
+      // SError.notImplementedYetDefect(s"$path")
+      ???
+    }
+
+    private def _select_string(path: SString, p: STable): Consequence[String] = {
+      // SError.notImplementedYetDefect(s"$path")
+      ???
+    }
+
+    private def _select_atom(path: SAtom, p: STable): Consequence[String] = {
+      // SError.notImplementedYetDefect(s"$path")
       ???
     }
 
@@ -1286,6 +1395,7 @@ object LispFunction {
     def apply(p: LispContext): LispContext = {
       val a = for {
         strategy <- p.param.powertypeOption('resulttype, SExpr.CreateStrategy)
+        
         args <- p.param.argumentList[String]
       } yield {
         (strategy |@| args) { (s, xs) =>

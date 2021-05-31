@@ -19,7 +19,8 @@ import org.goldenport.sexpr._
  *  version Oct.  7, 2019
  *  version Nov. 27, 2019
  *  version Mar. 30, 2020
- * @version Feb. 26, 2021
+ *  version Feb. 26, 2021
+ * @version May. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 class StoreFeature(
@@ -36,36 +37,36 @@ class StoreFeature(
   def getCollection(store: Option[Symbol], collection: Symbol): Option[Collection] =
     factory.getCollection(store, collection)
 
-  def get(collection: Collection, id: Id): SExpr = SExpr.run(
+  def get(collection: Collection, id: Id): SExpr = SExpr.execute(
     collection.get(id).map(SRecord.apply).getOrElse(SError.notFound(s"Store[${collection.name}]", id.show))
   )
 
-  def select(collection: Collection, q: Query, header: Option[HeaderStrategy]): SExpr = SExpr.run {
+  def select(collection: Collection, q: Query, header: Option[HeaderStrategy]): SExpr = SExpr.execute {
     val a = collection.select(q)
     val t = header.map(x => a.toTable(i18nContext, x)).getOrElse(a.toTable)
     STable(t)
   }
 
-  def insert(collection: Collection, rec: Record): SExpr = SExpr.run {
+  def insert(collection: Collection, rec: Record): SExpr = SExpr.execute {
     val r = to_store_record(rec)
     SString(collection.insert(r).string)
   }
 
   def inserts(collection: Collection, ps: STable): SExpr = inserts(collection, ps.toRecordSequence)
 
-  def inserts(collection: Collection, ps: Seq[Record]): SExpr = SExpr.run {
+  def inserts(collection: Collection, ps: Seq[Record]): SExpr = SExpr.execute {
     val rs = to_store_records(ps)
     val r = collection.inserts(rs)
     SList.create(r.map(x => SString(x.string)))
   }
 
-  def inserts(collection: Collection, ps: RecordSequence): SExpr = SExpr.run {
+  def inserts(collection: Collection, ps: RecordSequence): SExpr = SExpr.execute {
     val rs = to_store_records(ps)
     val r = collection.inserts(rs)
     SList.create(r.map(x => SString(x.string)))
   }
 
-  def update(collection: Collection, id: Id, rec: Record): SExpr = SExpr.run {
+  def update(collection: Collection, id: Id, rec: Record): SExpr = SExpr.execute {
     val r = to_store_record(rec)
     collection.update(id, r)
     SBoolean.TRUE
@@ -82,58 +83,63 @@ class StoreFeature(
     case m => m
   }
 
-  def delete(collection: Collection, id: Id): SExpr = SExpr.run {
+  def delete(collection: Collection, id: Id): SExpr = SExpr.execute {
     collection.delete(id)
     SBoolean.TRUE
   }
 
-  def create(collection: Collection): SExpr = SExpr.run {
+  def create(collection: Collection): SExpr = SExpr.execute {
     collection.create
     SBoolean.TRUE
   }
 
-  def create(store: Option[Symbol], name: Symbol, schema: Schema): SExpr = SExpr.run {
+  def create(store: Option[Symbol], name: Symbol, schema: Schema): SExpr = SExpr.execute {
     factory.createCollection(store, name, schema)
     SBoolean.TRUE
   }
 
-  def create(name: Symbol, schema: Schema): SExpr = SExpr.run {
+  def create(name: Symbol, schema: Schema): SExpr = SExpr.execute {
     factory.createCollection(name, schema)
     SBoolean.TRUE
   }
 
-  def create(store: Symbol, name: Symbol, schema: Schema): SExpr = SExpr.run {
+  def create(store: Symbol, name: Symbol, schema: Schema): SExpr = SExpr.execute {
     factory.createCollection(store, name, schema)
     SBoolean.TRUE
   }
 
-  def drop(collection: Collection): SExpr = SExpr.run {
+  def drop(collection: Collection): SExpr = SExpr.execute {
     collection.drop()
     SBoolean.TRUE
   }
 
-  def define(store: Option[Symbol], name: Symbol, schema: Schema): SExpr = SExpr.run {
+  def define(store: Option[Symbol], name: Symbol, schema: Schema): SExpr = SExpr.execute {
     factory.defineCollection(store, name, schema)
     SBoolean.TRUE
   }
 
-  def define(name: Symbol, schema: Schema): SExpr = SExpr.run {
+  def define(name: Symbol, schema: Schema): SExpr = SExpr.execute {
     factory.defineCollection(name, schema)
     SBoolean.TRUE
   }
 
-  def define(store: Symbol, name: Symbol, schema: Schema): SExpr = SExpr.run {
+  def define(name: Symbol, table: Option[String], schema: Schema): SExpr = SExpr.execute {
+    factory.defineCollection(name, table, schema)
+    SBoolean.TRUE
+  }
+
+  def define(store: Symbol, name: Symbol, schema: Schema): SExpr = SExpr.execute {
     factory.defineCollection(store, name, schema)
     SBoolean.TRUE
   }
 
-  def imports(collection: Symbol, data: STable): SExpr = SExpr.run {
+  def imports(collection: Symbol, data: STable): SExpr = SExpr.execute {
     getCollection(collection).
       map(c => inserts(c, data)). // TODO more generic
       getOrElse(SError.notImplementedYetDefect("SoreFeature#imports"))
   }
 
-  def setup(collection: Symbol, data: STable): SExpr = SExpr.run {
+  def setup(collection: Symbol, data: STable): SExpr = SExpr.execute {
     getCollection(collection).
       map { c => // TODO more generic
         inserts(c, data) match {

@@ -18,7 +18,8 @@ import org.goldenport.sexpr._
  *  version Mar. 10, 2019
  *  version Aug.  4, 2019
  *  version Sep. 19, 2019
- * @version Jan. 30, 2020
+ *  version Jan. 30, 2020
+ * @version May. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait MatrixPart { self: LispFunction =>
@@ -41,7 +42,7 @@ trait MatrixPart { self: LispFunction =>
     matrix_save(u, file, _imatrix(p))
 
   protected final def matrix_save(u: LispContext, file: File, p: IMatrix[Double]): SExpr =
-    SExpr.run {
+    SExpr.execute {
       val data = p.rowIterator.map(_.map(_.toString)).toVector
       val strategy = csv_strategy(u.config)
       val csv = CsvBag.create(file, strategy)

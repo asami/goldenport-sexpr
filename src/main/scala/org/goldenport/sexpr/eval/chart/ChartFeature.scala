@@ -10,7 +10,8 @@ import org.goldenport.sexpr.eval.LispContext
 /*
  * @since   Mar. 10, 2019
  *  version Sep. 19, 2019
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version May. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 case class ChartFeature() extends Loggable {
@@ -56,7 +57,7 @@ case class ChartFeature() extends Loggable {
     Series.Builder(u.i18nContext, u.numericalOperations, xc, yc, tc)
   }
 
-  def draw(p: Chart): SExpr = SExpr.run(SWindow(_driver.draw(p).window))
+  def draw(p: Chart): SExpr = SExpr.execute(SWindow(_driver.draw(p).window))
 }
 
 object ChartFeature {
