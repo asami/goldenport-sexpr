@@ -13,7 +13,8 @@ import Incident._
 
 /*
  * @since   Apr. 12, 2019
- * @version Jun. 24, 2019
+ *  version Jun. 24, 2019
+ * @version Jun. 17, 2021
  * @author  ASAMI, Tomoharu
  */
 trait Incident extends ApplicationIncident {
@@ -155,6 +156,90 @@ object FileIncident {
     FileIncident(start, System.currentTimeMillis, None, url, Left(e))
 }
 
+case class InvariantIncident(
+  start: Long,
+  end: Long
+) extends Incident {
+  val kind = AssertionKind
+  def message = None
+  val exception = None
+  val bindings: Record = Record.empty
+  val show = "???"
+}
+object InvariantIncident {
+  def apply(p: SExpr): InvariantIncident = {
+    val t = System.currentTimeMillis
+    InvariantIncident(t, t) // TODO
+  }
+  def apply(p: SMessage): InvariantIncident = {
+    val t = System.currentTimeMillis
+    InvariantIncident(t, t) // TODO
+  }
+}
+
+case class PreConditionIncident(
+  start: Long,
+  end: Long
+) extends Incident {
+  val kind = AssertionKind
+  def message = None
+  val exception = None
+  val bindings: Record = Record.empty
+  val show = "???"
+}
+object PreConditionIncident {
+  def apply(p: SExpr): PreConditionIncident = {
+    val t = System.currentTimeMillis
+    PreConditionIncident(t, t) // TODO
+  }
+  def apply(p: SMessage): PreConditionIncident = {
+    val t = System.currentTimeMillis
+    PreConditionIncident(t, t) // TODO
+  }
+}
+
+case class PreConditionStateIncident(
+  start: Long,
+  end: Long
+) extends Incident {
+  val kind = AssertionKind
+  def message = None
+  val exception = None
+  val bindings: Record = Record.empty
+  val show = "???"
+}
+object PreConditionStateIncident {
+  def apply(p: SExpr): PreConditionStateIncident = {
+    val t = System.currentTimeMillis
+    PreConditionStateIncident(t, t) // TODO
+  }
+  def apply(p: SMessage): PreConditionStateIncident = {
+    val t = System.currentTimeMillis
+    PreConditionStateIncident(t, t) // TODO
+  }
+}
+
+case class PostConditionIncident(
+  start: Long,
+  end: Long
+) extends Incident {
+  val kind = AssertionKind
+  def message = None
+  val exception = None
+  val bindings: Record = Record.empty
+  val show = "???"
+}
+object PostConditionIncident {
+  def apply(p: SExpr): PostConditionIncident = {
+    val t = System.currentTimeMillis
+    PostConditionIncident(t, t) // TODO
+  }
+  def apply(p: SMessage): PostConditionIncident = {
+    val t = System.currentTimeMillis
+    PostConditionIncident(t, t) // TODO
+  }
+}
+
 object Incident {
   final val PROP_INCIDENT_KIND = "incidnet-kind"
   final val PROP_IS_SUCCESS = "is-success"
@@ -177,5 +262,9 @@ object Incident {
 
   case object FileKind extends Kind {
     val name = "file"
+  }
+
+  case object AssertionKind extends Kind {
+    val name = "assertion"
   }
 }

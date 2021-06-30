@@ -13,6 +13,7 @@ import java.lang.reflect.InvocationTargetException
 import org.w3c.dom.Node
 import org.joda.time._
 import play.api.libs.json._
+import com.typesafe.config.{Config => Hocon, ConfigFactory, ConfigObject}
 import org.goldenport.RAISE
 import org.goldenport.Strings
 import org.goldenport.parser._
@@ -34,8 +35,10 @@ import org.goldenport.value._
 import org.goldenport.values.{Urn, NumberRange, ValueRange, NumberInterval, DateTimePeriod, Money, Percent}
 import org.goldenport.values.LocalDateTimeInterval
 import org.goldenport.io.{InputSource, StringInputSource, UrlInputSource, UriUtils}
+import org.goldenport.io.MimeType
 import org.goldenport.bag.{ChunkBag, StringBag}
 import org.goldenport.bag.{ClobBag, BlobBag}
+import org.goldenport.xml.XmlConstants._
 import org.goldenport.xml.dom.{DomParser, DomUtils}
 import org.goldenport.parser.{LogicalToken, ParseResult}
 import org.goldenport.parser.ScriptToken
@@ -45,7 +48,9 @@ import org.goldenport.util.{StringUtils, AnyRefUtils, AnyUtils}
 import org.goldenport.util.DateTimeUtils
 import org.goldenport.util.SpireUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
+import org.goldenport.sexpr.eval.{InvariantIncident, PreConditionIncident, PreConditionStateIncident, PostConditionIncident}
 import org.goldenport.sexpr.eval.spark.SparkDataFrame
+import org.goldenport.sexpr.script.Script
 // import org.goldenport.sexpr.eval.chart.Chart
 
 /**
@@ -81,7 +86,8 @@ import org.goldenport.sexpr.eval.spark.SparkDataFrame
  *  version Feb. 25, 2021
  *  version Mar. 18, 2021
  *  version Apr. 25, 2021
- * @version May. 30, 2021
+ *  version May. 30, 2021
+ * @version Jun. 27, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -155,7 +161,7 @@ sealed trait SExpr extends Showable {
     case i => s"${titleName}[$i]"
   }
   def longTitle: String = long_title_value
-  protected val long_title_value: String = long_title
+  lazy protected val long_title_value: String = long_title
   protected def long_title: String = {
     (titleInfo, titleDescription) match {
       case ("", "") => s"${titleName}"
@@ -402,6 +408,8 @@ case class SString(string: String) extends SExpr {
   override protected def marshall_String = string
   override protected def display_String = literal_String
   override def titleInfo = s"${string.length}"
+
+  def replace(from: String, to: String): SString = SString(string.replace(from, to))
 }
 
 sealed trait SList extends SExpr {
@@ -519,7 +527,7 @@ object SLambda {
 
 case class SError(
   conclusion: Conclusion,
-  // label: Option[String] = None,
+  // labelOption: Option[String] = None,
   // exception: Option[Throwable] = None,
   incident: Option[Incident] = None,
   errors: Option[NonEmptyVector[SError]] = None,
@@ -527,12 +535,16 @@ case class SError(
   stderr: Option[SBlob] = None
 ) extends SExpr {
   def exception = conclusion.exception
-  def label = Some(message)
+  // def label = Some(message)
 
   def RAISE: Nothing = throw new SError.SErrorException(this)
 
   override def asObject = exception getOrElse this
-  def message: String = label orElse incident.map(_.show) orElse exception.map(_.toString) getOrElse errors.map(_.list.map(_.show).mkString(";")).getOrElse("")
+  def message: String = _incident_message orElse _exception_message orElse _error_message getOrElse conclusion.message.en
+  private def _incident_message = incident.map(_.show)
+  private def _exception_message = exception.map(_.toString)
+  private def _error_message = errors.map(_.list.map(_.show).mkString(";"))
+
   // override def print = detailTitle
   // override def show = detailTitle
   override def titleInfo = message
@@ -575,6 +587,7 @@ object SError {
   private def _post_condition = Conclusion.PostCondition
 
   def apply(conclusion: Conclusion, msg: String): SError = SError(conclusion.withMessage(msg))
+  def apply(conclusion: Conclusion, incident: Incident): SError = SError(conclusion, Some(incident))
   def apply(p: String): SError = SError(_internal_server_error)
   def apply(p: Throwable): SError = SError(Conclusion.make(p)) // , None, Some(_normalize(p)), None, None)
   def apply(label: String, e: Throwable): SError = SError(Conclusion.make(e, label)) // , Some(label), Some(_normalize(e)), None, None)
@@ -655,28 +668,30 @@ object SError {
     SError(_bad_request, label)
   }
 
-  def syntaxError(p: String): SError = SError(p)
+  def syntaxError(p: String): SError = SError(_bad_request, p)
 
   def syntaxError(p: ParseFailure[_]): SError = {
     val label = p.message
     SError(_bad_request, label)
   }
 
+  def invalidConversion(p: String): SError = SError(_bad_request, p)
+
   def invariant(): SError = SError(_invariant)
-  def invariant(p: SExpr): SError = RAISE.notImplementedYetDefect
-  def invariant(p: SMessage): SError = RAISE.notImplementedYetDefect
+  def invariant(p: SExpr): SError = SError(_invariant, InvariantIncident(p))
+  def invariant(p: SMessage): SError = SError(_invariant, InvariantIncident(p))
 
   def preCondition(): SError = SError(_pre_condition)
-  def preCondition(p: SExpr): SError = RAISE.notImplementedYetDefect
-  def preCondition(p: SMessage): SError = RAISE.notImplementedYetDefect
+  def preCondition(p: SExpr): SError = SError(_pre_condition, PreConditionIncident(p))
+  def preCondition(p: SMessage): SError = SError(_pre_condition, PreConditionIncident(p))
 
   def preConditionState(): SError = SError(_pre_condition_state)
-  def preConditionState(p: SExpr): SError = RAISE.notImplementedYetDefect
-  def preConditionState(p: SMessage): SError = RAISE.notImplementedYetDefect
+  def preConditionState(p: SExpr): SError = SError(_pre_condition_state, PreConditionStateIncident(p))
+  def preConditionState(p: SMessage): SError = SError(_pre_condition_state, PreConditionStateIncident(p))
 
   def postCondition(): SError = SError(_post_condition)
-  def postCondition(p: SExpr): SError = RAISE.notImplementedYetDefect
-  def postCondition(p: SMessage): SError = RAISE.notImplementedYetDefect
+  def postCondition(p: SExpr): SError = SError(_post_condition, PostConditionIncident(p))
+  def postCondition(p: SMessage): SError = SError(_post_condition, PostConditionIncident(p))
 
   def notImplementedYetDefect(p: String): SError = SError(_not_implemented, p)
 
@@ -720,7 +735,10 @@ case class SConsequence(value: SExpr, conclusion: Conclusion) extends SExpr {
   override protected def show_Content = Some(display)
 }
 
-case class SBinary(binary: ChunkBag) extends SExpr {
+case class SBinary(
+  binary: ChunkBag,
+  mime: MimeType = MimeType.application_octet_stream
+) extends SExpr {
 //  override def print = show
 //  override def show = detailTitle
   override def titleInfo = binary.size.toString
@@ -835,6 +853,8 @@ case class SRecord(record: IRecord) extends SExpr {
   def get(propertyname: String): SExpr = SExpr.create(record.get(propertyname))
 
   def table: STable = STable(Table.create(record))
+  def xml: SXml = SXml(record)
+  def json: SJson = SJson(record.toRecord.toJson)
 }
 object SRecord {
   def create(p: Lxsv): SRecord = SRecord(Record.create(p))
@@ -1159,6 +1179,24 @@ sealed trait SXml extends SExpr with IDom {
   def text: String
   def dom: org.w3c.dom.Node
   override def pretty = SExpr.toFull(SExpr.toPrettyXml(dom))
+
+  //
+  def json: SExpr = Record.createRecordOrSequence(dom) match {
+    case Right(r) => SJson(r.toJson)
+    case Left(l) => SJson(l.toJson)
+  }
+  def record: SExpr = Record.createRecordOrSequence(dom) match {
+    case Right(r) => SRecord(r)
+    case Left(l) => SError.invalidConversion("record")
+  }
+  def table: SExpr = Record.createRecordOrSequence(dom) match {
+    case Right(r) => STable(Table.create(r))
+    case Left(l) => STable(l.toTable)
+  }
+  def recordOrTable: SExpr = Record.createRecordOrSequence(dom) match {
+    case Right(r) => SRecord(r)
+    case Left(l) => STable(l.toTable)
+  }
 }
 object SXml {
   val suffix = "xml"
@@ -1167,6 +1205,29 @@ object SXml {
   def apply(p: org.w3c.dom.Node): SXml = DomSXml(p)
 
   def createOption(p: String): Option[SXml] = Try(apply(DomParser.parse(p))).toOption
+
+  def create(config: Script.Config, p: String): SExpr = createOption(p).
+    map(_to_sexpr).
+    getOrElse(SError.syntaxError(Strings.cutstring(p)))
+
+  private def _to_sexpr(p: SXml) = {
+    val dom = p.dom
+    dom.getNamespaceURI() match {
+      case null => _to_sexpr_prefix(p)
+      case NS_XHTML => SHtml(p.dom)
+      case NS_XSL => SXsl(p.dom)
+      case _ => _to_sexpr_prefix(p)
+    }
+  }
+
+  private def _to_sexpr_prefix(p: SXml) = {
+    val dom = p.dom
+    dom.getPrefix() match {
+      case "xsl" => SXsl(dom)
+      case "xhtml" => SHtml(dom)
+      case _ => p
+    }
+  }
 }
 case class StringSXml(text: String) extends SXml {
   override val titleName = "XML(String)"
@@ -1233,16 +1294,23 @@ case class SXPath(path: String) extends SExpr {
   // def show = s"XPath($path)"
 }
 
-case class SXsl(xslt: String) extends SExpr with IDom {
+sealed trait SXsl extends SExpr with IDom {
+}
+case class StringSXsl(xslt: String) extends SXsl {
   override def getString = Some(xslt)
   override def asString = xslt
   // def print = xslt
   // def show = s"XSLT(${cut_string(xslt)})"
   lazy val dom: org.w3c.dom.Node = DomUtils.parseXml(xslt)
 }
+case class DomSXsl(dom: org.w3c.dom.Node) extends SXsl {
+}
 object SXsl {
   val suffix = "xsl"
   private val _doctype_regex = "<!DOCTYPE[ ]+html ".r
+
+  def apply(p: String): SXsl = StringSXsl(p)
+  def apply(p: org.w3c.dom.Node): SXsl = DomSXsl(p)
 
   def createOption(p: String): Option[SXsl] = {
     Try {
@@ -1277,6 +1345,21 @@ sealed trait SJson extends SExpr with IDom {
     case Right(r) => r
     case Left(l) => l
   }
+
+  //
+  def xml: SExpr = SXml(dom)
+  def record: SExpr = Record.createRecordOrSequence(json) match {
+    case Right(r) => SRecord(r)
+    case Left(l) => SError.invalidConversion("record")
+  }
+  def table: SExpr = Record.createRecordOrSequence(json) match {
+    case Right(r) => STable(Table.create(r))
+    case Left(l) => STable(l.toTable)
+  }
+  def recordOrTable: SExpr = Record.createRecordOrSequence(json) match {
+    case Right(r) => SRecord(r)
+    case Left(l) => STable(l.toTable)
+  }
 }
 object SJson {
   def apply(text: String): SJson = StringSJson(text)
@@ -1299,6 +1382,33 @@ case class JsValueSJson(json: JsValue) extends SJson {
 //   lazy val text = o.toString
 //   def json = o
 // }
+
+sealed trait SHocon extends SExpr with IDom {
+  def text: String
+  def hocon: Hocon
+  override def pretty = SExpr.toFull(text)
+  override def getString = Some(text)
+  override def asString = text
+  lazy val record: Record = Record.createConfig(hocon)
+  def dom = record
+}
+object SHocon {
+  def apply(text: String): SHocon = StringSHocon(text)
+  def apply(o: Hocon): SHocon = HoconSHocon(o)
+  //  def apply(o: JsObject): SHocon = JsObjectSHocon(o)
+
+  def createOption(p: String): Option[SHocon] = Try(ConfigFactory.parseString(p)).toOption.map(SHocon.apply)
+}
+case class StringSHocon(text: String) extends SHocon {
+  def hocon = RAISE.notImplementedYetDefect
+  override val titleName = "HOCON(String)"
+  // def print = SExpr.toPrint(text)
+  // def show = text
+}
+case class HoconSHocon(hocon: Hocon) extends SHocon {
+  def text = RAISE.notImplementedYetDefect
+  override val titleName = "HOCON(HOCON)"
+}
 
 case class SDateTime(datetime: DateTime) extends SExpr {
   override def asObject = datetime
@@ -1431,6 +1541,13 @@ object SPeriod {
   def create(p: String): SPeriod = parse(p).take
 
   def yearMonthDay(y: Int, m: Int, d: Int): SPeriod = SPeriod(PeriodUtils.yearMonthDay(y, m, d))
+}
+
+case class SImage(mime: MimeType, binary: ChunkBag) extends SExpr {
+  override def asObject = binary
+}
+object SImage {
+  def png(p: ChunkBag): SImage = SImage(MimeType.image_png, p)
 }
 
 case class SMoney(money: Money) extends SExpr {
@@ -1765,6 +1882,7 @@ object SExpr {
     case JsString(v) => SString(v)
     case m: JsObject => SJson(m)
     case JsArray(vs) => SList.create(vs.map(SExpr.create))
+    case m: Hocon => SHocon(m)
     case m: LogicalToken => SExprParserNew.parse(m)
     case m: Throwable => SError(m)
     case m: AnyRef => SBean(m)

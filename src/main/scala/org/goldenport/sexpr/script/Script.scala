@@ -25,7 +25,8 @@ import org.goldenport.sexpr._
  *  version Nov. 16, 2019
  *  version Jan. 24, 2021
  *  version Feb. 20, 2021
- * @version Apr. 21, 2021
+ *  version Apr. 21, 2021
+ * @version Jun. 18, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -266,7 +267,7 @@ object Script {
         case m: ExpressionToken => add_Sexpr(config, SExpression(m.text))
         case m: ExplicitLiteralToken => RAISE.notImplementedYetDefect
         case m: ScriptToken => add_Sexpr(config, SScript.create(m))
-        case m: XmlToken => add_Sexpr(config, SXml(m.text))
+        case m: XmlToken => add_Sexpr(config, SXml.create(config, m.text))
         case m: JsonToken => add_Sexpr(config, SJson(m.text))
         case m: BracketToken => add_Sexpr(config, _from_bracket(config, m))
         case m: DoubleBracketToken => add_Sexpr(config, SMatrix.create2d(m.prefix, m.text))

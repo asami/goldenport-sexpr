@@ -23,7 +23,8 @@ import Parameters.Cursor
  *  version Nov.  9, 2019
  *  version Feb. 29, 2020
  *  version Mar. 30, 2020
- * @version Apr. 12, 2021
+ *  version Apr. 12, 2021
+ * @version Jun. 13, 2021
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -75,6 +76,10 @@ trait ParameterPart { self: LispContext =>
     def takeStringStrict(key: Symbol) = State[Cursor, ValidationNel[SError, String]](_.takeStringStrict(key))
 
     def getInt(key: Symbol) = State[Cursor, ValidationNel[SError, Option[Int]]](_.getInt(key))
+
+    def getString(key: Symbol) = State[Cursor, ValidationNel[SError, Option[String]]](_.getString(key))
+
+    def getStringStrict(key: Symbol) = State[Cursor, ValidationNel[SError, Option[String]]](_.getStringStrict(key))
 
     def propertyStringList(key: Symbol) = State[Cursor, ValidationNel[SError, List[String]]](_.propertyStringList(key))
 

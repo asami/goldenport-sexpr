@@ -32,7 +32,8 @@ import org.goldenport.value._
  *  version Jan. 16, 2021
  *  version Mar. 21, 2021
  *  version Apr. 12, 2021
- * @version May. 20, 2021
+ *  version May. 20, 2021
+ * @version Jun. 13, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -512,11 +513,25 @@ object Parameters {
       parameters.fetchPropertyStringStrict(key)
     }
 
+    def getString(key: Symbol): (Cursor, ValidationNel[SError, Option[String]]) = {
+      val x = parameters.getPropertyString(key)
+      val r = Success(x).toValidationNel
+      val nextspec = spec // TODO
+      to_result(nextspec, r)
+    }
+
+    def getStringStrict(key: Symbol): (Cursor, ValidationNel[SError, Option[String]]) = {
+      val x = parameters.getPropertyStringStrict(key)
+      val r = Success(x).toValidationNel
+      val nextspec = spec // TODO
+      to_result(nextspec, r)
+    }
+
     def getInt(key: Symbol): (Cursor, ValidationNel[SError, Option[Int]]) = {
       val x = parameters.getPropertyInt(key)
       val r = Success(x).toValidationNel
       val nextspec = spec // TODO
-      to_result_pop(nextspec, r)
+      to_result_pop(nextspec, r) // TODO to_result
     }
 
     def propertyStringList(key: Symbol): (Cursor, ValidationNel[SError, List[String]]) = {

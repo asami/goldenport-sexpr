@@ -9,7 +9,8 @@ import org.goldenport.sexpr._
 
 /*
  * @since   May.  3, 2019
- * @version May.  4, 2019
+ *  version May.  4, 2019
+ * @version Jun. 19, 2021
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -20,7 +21,7 @@ class ParametersSpec extends WordSpec with Matchers with GivenWhenThen {
       val a = List(SKeyword("type"), SString("string"), SString("one"), SString("two"))
       val ps = Parameters(a)
       ps should be(Parameters(
-        List(SString("one"), SString("two")),
+        Vector(Parameters.Argument(SString("one")), Parameters.Argument(SString("two"))),
         Map('type -> SString("string")),
         Set.empty
       ))

@@ -13,14 +13,15 @@ import org.goldenport.sexpr._
  * @since   Aug. 17, 2018
  *  version Sep. 20, 2018
  *  version Oct.  1, 2019
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Jun. 19, 2021
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
 class LispEvaluatorSpec extends WordSpec with Matchers with GivenWhenThen {
   val config = LispConfig.debug
   val i18n = I18NContext.default // XXX test
-  val query = QueryExpression.Context.default
+  val query = QueryExpression.Context.now()
   "expression" should {
     "flat" in {
       val evaluator = LispEvaluator(config, i18n, query)

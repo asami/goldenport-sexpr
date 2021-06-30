@@ -11,13 +11,15 @@ import java.net.{URL, URI}
 import play.api.libs.json._
 import org.goldenport.Strings
 import org.goldenport.exception.RAISE
+import org.goldenport.i18n.I18NMessage
 import org.goldenport.context.Effect
 import org.goldenport.context.Consequence
+import org.goldenport.record.v2.{XInt}
 import org.goldenport.record.v3.{Record, ITable}
+import org.goldenport.record.v3.Table.CreateHtmlStrategy
 import org.goldenport.record.unitofwork._
 import org.goldenport.record.unitofwork.UnitOfWork._
 import org.goldenport.record.http.{Request, Response}
-import org.goldenport.record.v3.Table.CreateHtmlStrategy
 import org.goldenport.io.{MimeType, UrlUtils, Retry => LibRetry}
 import org.goldenport.io.ResourceHandle
 import org.goldenport.matrix.{IMatrix, Matrix}
@@ -27,6 +29,7 @@ import org.goldenport.xml.xpath.XPathPredicate
 import org.goldenport.log.Loggable
 import org.goldenport.cli.ShellCommand
 import org.goldenport.incident.{Incident => LibIncident}
+import org.goldenport.values.PathName
 import org.goldenport.parser.InterpolationParser
 import org.goldenport.sexpr._, SExprConverter._
 import org.goldenport.sexpr.eval.LispFunction._
@@ -55,7 +58,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Feb. 22, 2021
  *  version Mar. 21, 2021
  *  version Apr. 20, 2021
- * @version May. 20, 2021
+ *  version May. 20, 2021
+ * @version Jun. 26, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -421,10 +425,16 @@ trait CursorEvalFunction extends EvalFunction {
     FunctionSpecification.Parameter(name, true)
 
   protected final def param_argument_option(name: String): FunctionSpecification.Parameter =
-    FunctionSpecification.Parameter(name, false)
+    FunctionSpecification.Parameter.argumentOption(name)
 
   protected final def param_argument_int_option(name: String): FunctionSpecification.Parameter =
-    FunctionSpecification.Parameter(name, false)
+    FunctionSpecification.Parameter.argumentOption(name, XInt)
+
+  protected final def param_property_option(name: String): FunctionSpecification.Parameter =
+    FunctionSpecification.Parameter.propertyOption(name)
+
+  protected final def param_property_int_option(name: String): FunctionSpecification.Parameter =
+    FunctionSpecification.Parameter.propertyOption(name, XInt)
 }
 
 trait ControlFunction extends LispFunction {
@@ -707,13 +717,13 @@ object LispFunction {
     } yield (pred |@| target)(_assert(u))
 
     private def _assert(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
-      if (u.evalCondition(pred))
+      if (u.evalCondition(pred, target))
         target
       else
         SError.invariant(target)
   }
 
-  // pre-condition (callee responsibility)
+  // pre-condition (caller responsibility)
   case object Assume extends CursorEvalFunction {
     val specification = FunctionSpecification("assume",
       param_argument("predicate"),
@@ -726,13 +736,13 @@ object LispFunction {
     } yield (pred |@| target)(_assume(u))
 
     private def _assume(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
-      if (u.evalCondition(pred))
+      if (u.evalCondition(pred, target))
         target
       else
         SError.preConditionState(target)
   }
 
-  // pre-condition (caller responsibility)
+  // pre-condition (callee responsibility)
   case object Require extends CursorEvalFunction {
     val specification = FunctionSpecification("require",
       param_argument("predicate"),
@@ -745,7 +755,7 @@ object LispFunction {
     } yield (pred |@| target)(_require(u))
 
     private def _require(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
-      if (u.evalCondition(pred))
+      if (u.evalCondition(pred, target))
         target
       else
         SError.preCondition(target)
@@ -764,7 +774,7 @@ object LispFunction {
     } yield (pred |@| target)(_ensuring(u))
 
     private def _ensuring(u: LispContext)(pred: SExpr, target: SExpr): SExpr =
-      if (u.evalCondition(pred))
+      if (u.evalCondition(pred, target))
         target
       else
         SError.postCondition(target)
@@ -1252,7 +1262,7 @@ object LispFunction {
 
     private def _xslt(xslt: SXsl, p: IDom): SXml = {
       // println("XSLT: " + DomUtils.toString(p.dom))
-      val r = DomUtils.transform(xslt.xslt, p.dom) // Caution: xslt.dom doen't work.
+      val r = DomUtils.transform(xslt.dom, p.dom)
       SXml(r)
     }
   }
@@ -1265,11 +1275,11 @@ object LispFunction {
     val specification = FunctionSpecification("select",
       param_argument("projection"),
       param_argument("from"),
-      param_argument_option("join"),
-      param_argument_option("where"),
-      param_argument_option("orderby"),
-      param_argument_int_option("start"),
-      param_argument_int_option("limit")
+      param_property_option("join"),
+      param_property_option("where"),
+      param_property_option("orderby"),
+      param_property_int_option("start"),
+      param_property_int_option("limit")
     )
 
     // protected final def param_arguments = State[Parameters.Cursor, ValidationNel[SError, List[SExpr]]](_.arguments)
@@ -1307,14 +1317,15 @@ object LispFunction {
 
     private def _select(form: SList, p: SExpr) = p match {
       case m: STable => _select_table(form, m)
+      case m: SRecord => _select_record(form, m)
       case _ => _select_list(form, p)
     }
 
     private def _select_table(form: SList, p: STable): SExpr = {
       val names = form.list.traverse {
-        case m: SXPath => _select_path(m, p)
-        case m: SString => _select_string(m, p)
-        case m: SAtom => _select_atom(m, p)
+        case m: SXPath => _select_name(m)
+        case m: SString => _select_name(m)
+        case m: SAtom => _select_name(m)
         case m => ??? // ConclusionResult.ParseFailure("???") // SError.invalidArgumentFault(s"Invalid form element: $m")
       }
       SExpr.run {
@@ -1329,19 +1340,16 @@ object LispFunction {
       // STable(p.table.select(names))
     }
 
-    private def _select_path(path: SXPath, p: STable): Consequence[String] = {
-      // SError.notImplementedYetDefect(s"$path")
-      ???
-    }
-
-    private def _select_string(path: SString, p: STable): Consequence[String] = {
-      // SError.notImplementedYetDefect(s"$path")
-      ???
-    }
-
-    private def _select_atom(path: SAtom, p: STable): Consequence[String] = {
-      // SError.notImplementedYetDefect(s"$path")
-      ???
+    private def _select_record(form: SList, p: SRecord): SExpr = {
+      val names = form.list.traverse {
+        case m: SXPath => _select_name(m)
+        case m: SString => _select_name(m)
+        case m: SAtom => _select_name(m)
+        case m => ??? // ConclusionResult.ParseFailure("???") // SError.invalidArgumentFault(s"Invalid form element: $m")
+      }
+      SExpr.run {
+        for (xs <- names) yield SRecord(p.record.toRecord.select(xs))
+      }
     }
 
     private def _select_list(form: SList, p: SExpr) = {
@@ -1366,6 +1374,21 @@ object LispFunction {
     private def _select_atom(path: SAtom, p: SExpr) = {
       SError.notImplementedYetDefect(s"$path")
     }
+
+    private def _select_name(path: SXPath): Consequence[String] = {
+      val a = PathName(path)
+      a.components match {
+        case Nil => Consequence.invalidArgumentFault("Empty name")
+        case x :: Nil => Consequence.success(x)
+        case xs => Consequence.invalidArgumentFault(I18NMessage("Invalid name: {0}", path))
+      }
+    }
+
+    private def _select_name(s: SString): Consequence[String] =
+      Consequence.success(s.string)
+
+    private def _select_name(atom: SAtom): Consequence[String] =
+      Consequence.success(atom.name)
   }
 
   case object Retry extends ControlFunction {

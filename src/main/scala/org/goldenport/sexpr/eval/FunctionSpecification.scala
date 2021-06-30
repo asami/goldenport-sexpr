@@ -2,7 +2,8 @@ package org.goldenport.sexpr.eval
 
 import scala.util.control.NonFatal
 import org.goldenport.collection.VectorMap
-import org.goldenport.record.v2.{XObject}
+import org.goldenport.record.v2.{DataType, XObject}
+import org.goldenport.record.v2.MZeroOne
 import org.goldenport.record.v3.Column
 import org.goldenport.sexpr.SExpr
 import org.goldenport.util.NumberUtils
@@ -12,7 +13,8 @@ import org.goldenport.util.NumberUtils
  *  version Mar. 10, 2019
  *  version Jul. 14, 2019
  *  version Mar. 21, 2021
- * @version Apr. 12, 2021
+ *  version Apr. 12, 2021
+ * @version Jun. 26, 2021
  * @author  ASAMI, Tomoharu
  */
 case class FunctionSpecification(
@@ -101,7 +103,7 @@ object FunctionSpecification {
   case class Parameters(
     parameters: List[Parameter]
   ) {
-    def numberOfRequiredArguments: Int = parameters.count(_.isArgument)
+    def numberOfRequiredArguments: Int = parameters.count(_.isRequiredArgument)
 
     def argumentNames: List[String] = parameters.withFilter(_.isArgument).map(_.name)
 
@@ -118,6 +120,8 @@ object FunctionSpecification {
     metadata: Column,
     isArgument: Boolean
   ) extends Column.Holder {
+    def isRequired = metadata.isRequired
+    def isRequiredArgument = isArgument && isRequired
     def column = metadata
   }
   object Parameter {
@@ -131,6 +135,18 @@ object FunctionSpecification {
 
     def argumentNameZeroBased(p: Int) = argumentNameOneBased(p + 1)
     def argumentNameOneBased(p: Int) = s"$ARGUMENT_PREFIX$p"
+
+    def argumentOption(name: String): Parameter =
+      Parameter(Column(name, XObject, MZeroOne), true)
+
+    def argumentOption(name: String, dt: DataType): Parameter =
+      Parameter(Column(name, dt, MZeroOne), true)
+
+    def propertyOption(name: String): Parameter =
+      Parameter(Column(name, XObject, MZeroOne), false)
+
+    def propertyOption(name: String, dt: DataType): Parameter =
+      Parameter(Column(name, dt, MZeroOne), false)
   }
 
   def apply(name: String): FunctionSpecification = apply(name, 0)
