@@ -87,7 +87,8 @@ import org.goldenport.sexpr.script.Script
  *  version Mar. 18, 2021
  *  version Apr. 25, 2021
  *  version May. 30, 2021
- * @version Jun. 27, 2021
+ *  version Jun. 27, 2021
+ * @version Jul. 12, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -1548,6 +1549,8 @@ case class SImage(mime: MimeType, binary: ChunkBag) extends SExpr {
 }
 object SImage {
   def png(p: ChunkBag): SImage = SImage(MimeType.image_png, p)
+  def webp(p: ChunkBag): SImage = SImage(MimeType.image_webp, p)
+  def svg(p: ChunkBag): SImage = SImage(MimeType.image_svg_xml, p)
 }
 
 case class SMoney(money: Money) extends SExpr {
