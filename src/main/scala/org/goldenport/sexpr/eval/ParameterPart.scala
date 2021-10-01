@@ -9,8 +9,9 @@ import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.record.query.QueryExpression
 import org.goldenport.collection.NonEmptyVector
-import org.goldenport.sexpr._
 import org.goldenport.value._
+import org.goldenport.sexpr._
+import org.goldenport.sexpr.eval.entity.{EntityCollection, EntityId, EntityClass}
 import Parameters.Cursor
 
 /*
@@ -24,7 +25,8 @@ import Parameters.Cursor
  *  version Feb. 29, 2020
  *  version Mar. 30, 2020
  *  version Apr. 12, 2021
- * @version Jun. 13, 2021
+ *  version Jun. 13, 2021
+ * @version Sep. 19, 2021
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -44,6 +46,12 @@ trait ParameterPart { self: LispContext =>
     def storeCollection = State[Cursor, ValidationNel[SError, Collection]](_.storeCollection)
 
     def idForStore = State[Cursor, ValidationNel[SError, Id]](_.idForStore)
+
+    def entityCollection = State[Cursor, ValidationNel[SError, EntityCollection]](_.entityCollection)
+
+    def idForEntity = State[Cursor, ValidationNel[SError, EntityId]](_.idForEntity)
+
+    def entityClass = State[Cursor, ValidationNel[SError, EntityClass]](_.entityClass)
 
     def schema(p: LispContext) = State[Cursor, ValidationNel[SError, Schema]](_.schema(p))
 

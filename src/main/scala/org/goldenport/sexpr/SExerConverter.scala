@@ -15,7 +15,8 @@ import org.goldenport.matrix.IMatrix
  *  version Apr. 20, 2019
  *  version May.  8, 2019
  *  version Aug.  3, 2019
- * @version Nov.  8, 2019
+ *  version Nov.  8, 2019
+ * @version Sep. 21, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExprConverter[T] extends Function1[SExpr, T]
@@ -95,10 +96,10 @@ object SExprConverter {
     def apply(p: SExpr): Record = p match {
       case SRecord(s) => s.toRecord
       case SString(s) => RecordFactory.unmarshall(s)
-      case m: SJson => RecordFactory.unmarshall(m.text)
-      case m: SXml => RecordFactory.unmarshall(m.text)
-      case m: SHtml => RecordFactory.unmarshall(m.text)
-      case m: SCell => RecordFactory.unmarshall(m)
+      case m: SJson => RecordFactory.unmarshall(m)
+      case m: SXml => RecordFactory.unmarshall(m)
+      case m: SHtml => RecordFactory.unmarshall(m)
+      case m: SList => RecordFactory.unmarshall(m)
       case m => RAISE.invalidArgumentFault(s"Not record: $m")
     }
   }

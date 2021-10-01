@@ -26,8 +26,7 @@ import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.incident.{Incident => LibIncident}
 import org.goldenport.matrix.INumericalOperations
 import org.goldenport.sexpr._
-import org.goldenport.sexpr.eval.store.StoreFeature
-import org.goldenport.sexpr.eval.chart.ChartFeature
+import org.goldenport.sexpr.eval.entity.EntityFactory
 
 /*
  * @since   Sep. 15, 2018
@@ -50,7 +49,8 @@ import org.goldenport.sexpr.eval.chart.ChartFeature
  *  version Feb. 25, 2021
  *  version Mar. 12, 2021
  *  version Apr. 13, 2021
- * @version May.  9, 2021
+ *  version May.  9, 2021
+ * @version Sep. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
@@ -457,10 +457,10 @@ object LispContext {
     config: LispConfig,
     i18ncontext: I18NContext,
     querycontext: QueryExpression.Context,
+    entityfactory: EntityFactory,
     evaluator: LispContext => LispContext, // apply_context
     x: SExpr
   ): LispContext = {
-    val scriptContext = ScriptEngineContext.default
     val sqlcontext = {
       if (true)
         SqlContext.createEachTime(config.properties, querycontext)
@@ -469,12 +469,27 @@ object LispContext {
       else
         SqlContext.createConnectionPool(config.properties, querycontext)
     }
+    val featurecontext = FeatureContext.create(
+      config.properties,
+      i18ncontext,
+      sqlcontext,
+      entityfactory
+    )
+    apply(config, i18ncontext, querycontext, featurecontext, evaluator, x)
+  }
+
+  def apply(
+    config: LispConfig,
+    i18ncontext: I18NContext,
+    querycontext: QueryExpression.Context,
+    feature: FeatureContext,
+    evaluator: LispContext => LispContext, // apply_context
+    x: SExpr
+  ): LispContext = {
+    val scriptContext = ScriptEngineContext.default
+    val sqlcontext = feature.sqlContext
     val resourceManager = new ResourceManager()
     val numericalOperations = config.numericalOperations
-    val featurecontext = FeatureContext(
-      new StoreFeature(config.properties, i18ncontext, sqlcontext),
-      ChartFeature.default
-    )
     PlainLispContext(
       config,
       i18ncontext,
@@ -486,7 +501,7 @@ object LispContext {
       sqlcontext,
       resourceManager,
       numericalOperations,
-      featurecontext,
+      feature,
       x,
       None,
       Record.empty

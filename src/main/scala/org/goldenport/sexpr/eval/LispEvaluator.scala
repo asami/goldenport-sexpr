@@ -42,7 +42,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Feb. 25, 2021
  *  version Mar. 21, 2021
  *  version Apr. 20, 2021
- * @version May. 10, 2021
+ *  version May. 10, 2021
+ * @version Sep. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -50,8 +51,16 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   def config: LispConfig
   def i18nContext: I18NContext
   def queryContext: QueryExpression.Context
+  def featureContext: FeatureContext
   protected def create_Eval_Context(): C = create_Eval_Context(SNil)
-  protected def create_Eval_Context(x: SExpr): C = LispContext(config, i18nContext, queryContext, apply_context, x).asInstanceOf[C]
+  protected def create_Eval_Context(x: SExpr): C = LispContext(
+    config,
+    i18nContext,
+    queryContext,
+    featureContext,
+    apply_context _,
+    x
+  ).asInstanceOf[C]
   protected def create_Eval_Context(xs: List[SExpr]): C = create_Eval_Context(SList.create(xs))
   protected def reduction_Context(xs: Seq[C]): C = create_Eval_Context(xs.toList.map(_.value))
   protected def lift_Context(c: EvalContext): C = c.asInstanceOf[C]
@@ -308,11 +317,13 @@ object LispEvaluator {
   def apply(
     p: LispConfig,
     i18ncontext: I18NContext,
-    querycontext: QueryExpression.Context
+    querycontext: QueryExpression.Context,
+    featurecontext: FeatureContext
   ): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
     val config = p
     val i18nContext = i18ncontext
     val queryContext = querycontext
+    val featureContext = featurecontext
     init_binding(LispBinding())
   }
 }

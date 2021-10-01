@@ -49,6 +49,7 @@ import org.goldenport.util.DateTimeUtils
 import org.goldenport.util.SpireUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
 import org.goldenport.sexpr.eval.{InvariantIncident, PreConditionIncident, PreConditionStateIncident, PostConditionIncident}
+import org.goldenport.sexpr.eval.entity.Entity
 import org.goldenport.sexpr.eval.spark.SparkDataFrame
 import org.goldenport.sexpr.script.Script
 // import org.goldenport.sexpr.eval.chart.Chart
@@ -88,7 +89,8 @@ import org.goldenport.sexpr.script.Script
  *  version Apr. 25, 2021
  *  version May. 30, 2021
  *  version Jun. 27, 2021
- * @version Jul. 12, 2021
+ *  version Jul. 12, 2021
+ * @version Sep. 25, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -654,7 +656,10 @@ object SError {
 
   def missingArgumentFault(p: String): SError = SError(_bad_request, p) // TODO
 
-  def invalidDatatype(name: String, p: SExpr): SError = {
+  def invalidDatatype(name: String, p: SExpr): SError =
+    invalidDatatype(name, p.embed)
+
+  def invalidDatatype(name: String, p: String): SError = {
     val label = s"Invalid datatype '$name': $p"
     SError(_bad_request, label)
   }
@@ -806,7 +811,7 @@ object SBlob {
 }
 
 // literal document format (e.g. smartdox)
-case class SDocument(document: IDocument) extends SExpr { // Bean
+case class SDocument(document: IDocument) extends SExpr {
   override def getString = Some(document.toString)
   // def print = show
   // def show = document.toString
@@ -817,6 +822,10 @@ case class SSlip(slip: ISlip) extends SExpr {
 
 // obsolated
 case class SVoucher(voucher: IVoucher) extends SExpr {
+}
+
+case class SEntity(entity: Entity) extends SExpr with Mutable {
+  override def titleInfo = entity.show
 }
 
 case class SSchema(schema: Schema) extends SExpr {
@@ -1725,6 +1734,7 @@ trait Mutable { self: SExpr =>
   override def print = print_make
   override def display = display_make
   override def title = title_make
+  override def longTitle = long_title
   override def show = show_make
   override def description = description_make
 }

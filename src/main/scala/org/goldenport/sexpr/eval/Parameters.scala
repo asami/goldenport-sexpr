@@ -7,10 +7,12 @@ import org.goldenport.collection.NonEmptyVector
 import org.goldenport.collection.VectorMap
 import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{IRecord, Record, RecordSequence, Table}
+import org.goldenport.record.v3.Field
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.record.query.QueryExpression
 import org.goldenport.sexpr._
+import org.goldenport.sexpr.eval.entity.{EntityCollection, EntityId, EntityClass}
 // import org.goldenport.sexpr.SExprConverter._
 import org.goldenport.value._
 
@@ -33,7 +35,8 @@ import org.goldenport.value._
  *  version Mar. 21, 2021
  *  version Apr. 12, 2021
  *  version May. 20, 2021
- * @version Jun. 13, 2021
+ *  version Jun. 13, 2021
+ * @version Sep. 21, 2021
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -379,6 +382,26 @@ object Parameters {
       to_result_pop(nextspec, r)
     }
 
+    def entityCollection: (Cursor, ValidationNel[SError, EntityCollection]) = {
+      val entity = parameters.getPropertySymbol('entity)
+      val collection = parameters.argument1[Symbol](spec)
+      val a = feature.entity.getCollection(entity, collection)
+      val r = a.map(Success(_)).getOrElse(Failure(SError.notFound("collection", collection.name))).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
+    def entityClass: (Cursor, ValidationNel[SError, EntityClass]) = {
+      ???
+    }
+
+    def idForEntity: (Cursor, ValidationNel[SError, EntityId]) = {
+      val id = parameters.argument1[String](spec)
+      val r = Success(feature.entity.createId(id)).toValidationNel
+      val nextspec = spec // TODO
+      to_result_pop(nextspec, r)
+    }
+
     def schema(p: LispContext): (Cursor, ValidationNel[SError, Schema]) = {
       val r = parameters.arguments(0) match {
         case SString(name) => _schema(p, name)
@@ -432,6 +455,41 @@ object Parameters {
       to_result_pop(nextspec, r)
     }
 
+    // private def _validation_nel(p: IRecord): ValidationNel[SError, Record] =
+    //   Success(p.toRecord).toValidationNel
+
+    // private def _to_record(p: SExpr): ValidationNel[SError, Record] = p match {
+    //   case m: SRecord => _validation_nel(m.record)
+    //   case m: SCell => _list_to_record(m)
+    //   case m => Failure(SError.invalidDatatype("record", s"Not record: ${p.embed}")).toValidationNel
+    // }
+
+    // private def _list_to_record(p: SCell) = {
+    //   case class Z(
+    //     xs: Vector[Field] = Vector.empty,
+    //     errors: Vector[SError] = Vector.empty
+    //   ) {
+    //     def r = errors.headOption match {
+    //       case Some(s) => Failure(NonEmptyList.nel(s, errors.tail.toList))
+    //       case None => 
+    //         _validation_nel(
+    //           if (xs.isEmpty)
+    //             Record.empty
+    //           else
+    //             Record(xs)
+    //       )
+    //     }
+
+    //     def +(rhs: SExpr) = rhs match {
+    //       case SCell(car, cdr) => 
+    //       case m => _error(m)
+    //     }
+
+    //     private def _error(p: SExpr) = copy(errors = errors :+ SError.invalidDatatype(s"Not cell: ${p.embed}"))
+    //   }
+    //   p.list./:(Z())(_+_).r
+    // }
+
     def records: (Cursor, ValidationNel[SError, RecordSequence]) = {
       case class Z(rs: Vector[IRecord] = Vector.empty, count: Int = 0, donep: Boolean = false) {
         def records: RecordSequence = RecordSequence(rs)
@@ -444,8 +502,6 @@ object Parameters {
           case m => _done
         }
 
-        private def _done = copy(donep = true)
-
         private def _list(p: SCell) = _vector(p.vector)
 
         private def _vector(xs: Seq[_]) = {
@@ -454,6 +510,8 @@ object Parameters {
           else
             _done
         }
+
+        private def _done = copy(donep = true)
       }
       val z = parameters.arguments./:(Z())(_+_)
       val rs = z.records

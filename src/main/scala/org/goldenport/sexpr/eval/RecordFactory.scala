@@ -13,8 +13,9 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Apr. 20, 2019
-failure: NoSuccess *  version May.  9, 2019
-failure: NoSuccess * @version Jul. 30, 2019
+ *  version May.  9, 2019
+ *  version Jul. 30, 2019
+ * @version Sep. 21, 2021
  * @author  ASAMI, Tomoharu
  */
 case class RecordFactory(config: RichConfig) {
@@ -34,7 +35,12 @@ case class RecordFactory(config: RichConfig) {
     case NonFatal(e) => Failure(e).toValidationNel
   }
 
-  def unmarshall(p: SExpr): Record = RecordFactory.SExprRecordParser.parse(p)
+  def unmarshall(p: SExpr): Record = p match {
+    case SNil => Record.empty
+    case _ => RecordFactory.SExprRecordParser.parse(p)
+  }
+
+  def unmarshall(p: SJson): Record = unmarshall(p.json)
 
   def unmarshallValidation(p: JsValue): ValidationNel[Throwable, Record] = try {
     Success(unmarshall(p)).toValidationNel
@@ -58,9 +64,10 @@ object RecordFactory {
   val default = RecordFactory(RichConfig.empty)
 
   def unmarshall(p: String): Record = default.unmarshall(p)
-  def unmarshall(p: SExpr): Record = default.unmarshall(p)
+  def unmarshall(p: SList): Record = default.unmarshall(p)
   def unmarshall(p: SJson): Record = default.unmarshall(p)
   def unmarshall(p: SXml): Record = default.unmarshall(p)
+  def unmarshall(p: SExpr): Record = default.unmarshall(p)
 
   object SExprRecordParser extends SExprParsers {
     import org.goldenport.record.v2.{Column, DataType, Multiplicity}
