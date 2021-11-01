@@ -12,7 +12,9 @@ import org.goldenport.sexpr.eval.store.StoreFeature
 
 /*
  * @since   Sep. 18, 2021
- * @version Sep. 21, 2021
+ *  version Sep. 21, 2021
+ *  version Oct.  2, 2021
+ * @version Nov.  1, 2021
  * @author  ASAMI, Tomoharu
  */
 class EntityFeature(
@@ -28,8 +30,12 @@ class EntityFeature(
   def getCollection(store: Option[Symbol], collection: Symbol): Option[EntityCollection] =
     factory.getCollection(store, collection)
 
+  def get(id: EntityId): SExpr = SExpr.execute(
+    getCollection(Symbol(id.className)).map(_.get(id.objectId)).getOrElse(SError.notFound(id.string))
+  )
+
   def get(collection: EntityCollection, id: EntityId): SExpr = SExpr.execute(
-    collection.get(id)
+    collection.get(id.objectId)
   )
 
   def query(collection: EntityCollection, q: Query): SExpr = SExpr.execute(
@@ -49,11 +55,15 @@ class EntityFeature(
   )
 
   def update(collection: EntityCollection, id: EntityId, rec: Record): SExpr = SExpr.execute(
-    collection.update(id, rec)
+    collection.update(id.objectId, rec)
   )
 
   def delete(collection: EntityCollection, id: EntityId): SExpr = SExpr.execute(
-    collection.delete(id)
+    collection.delete(id.objectId)
+  )
+
+  def createCollection(collection: EntityCollection): SExpr = SExpr.execute(
+    collection.constitute()
   )
 
   def createCollection(name: Symbol, entityclass: EntityClass): SExpr = SExpr.execute(
@@ -61,7 +71,7 @@ class EntityFeature(
   )
 
   def deleteCollection(collection: EntityCollection): SExpr = SExpr.execute(
-    ???
+    collection.destroy()
   )
 
   def defineCollection(name: Symbol, entity: EntityClass): SExpr = SExpr.execute {

@@ -10,7 +10,8 @@ import org.goldenport.sexpr.eval._
 
 /*
  * @since   Mar. 30, 2019
- * @version Sep. 20, 2021
+ *  version Sep. 20, 2021
+ * @version Oct.  2, 2021
  * @author  ASAMI, Tomoharu
  */
 object EntityFunction {
@@ -137,10 +138,9 @@ object EntityFunction {
 
     def apply(p: LispContext): LispContext = {
       val a = for {
-        collection <- p.param.argument1[Symbol]
-        entityclazz <- p.param.entityClass
+        collection <- p.param.entityCollection
       } yield {
-        (collection |@| entityclazz)(p.feature.entity.createCollection(_, _)).valueOr(SError(_))
+        collection.map(p.feature.entity.createCollection(_)).valueOr(SError(_))
       }
       val r = a.run(p.param.cursor(specification))
       p.toResult(r._2)

@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import org.goldenport.hocon.RichConfig
 import org.goldenport.i18n.I18NContext
 import org.goldenport.record.v3.sql.SqlContext
+import org.goldenport.record.store.StoreFactory
 import store.StoreFeature
 import entity.{EntityFeature, EntityFactory}
 import chart.ChartFeature
@@ -12,7 +13,8 @@ import chart.ChartFeature
  *  version Apr.  6, 2019
  *  version Mar. 30, 2020
  *  version Feb. 20, 2021
- * @version Sep. 20, 2021
+ *  version Sep. 20, 2021
+ * @version Oct.  3, 2021
  * @author  ASAMI, Tomoharu
  */
 case class FeatureContext(
@@ -30,7 +32,8 @@ object FeatureContext {
     sqlcontext: SqlContext,
     entityfactory: EntityFactory
   ) = {
-    val store = new StoreFeature(config, i18ncontext, sqlcontext)
+    val factory = new StoreFactory(config, sqlcontext)
+    val store = new StoreFeature(config, i18ncontext, sqlcontext, factory)
     val entity = EntityFeature.create(entityfactory)
     FeatureContext(store, entity, ChartFeature.default)
   }

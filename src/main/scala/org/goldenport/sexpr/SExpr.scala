@@ -90,7 +90,8 @@ import org.goldenport.sexpr.script.Script
  *  version May. 30, 2021
  *  version Jun. 27, 2021
  *  version Jul. 12, 2021
- * @version Sep. 25, 2021
+T *  version Sep. 25, 2021
+T * @version Oct. 31, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -633,8 +634,10 @@ object SError {
     SError(_not_found, s)
   }
 
-  def notFound(key: Symbol): SError = {
-    val s = s"'${key.name}' is not found."
+  def notFound(key: Symbol): SError = notFound(key.name)
+
+  def notFound(key: String): SError = {
+    val s = s"'${key}' is not found."
     SError(_not_found, s)
   }
 
@@ -825,7 +828,19 @@ case class SVoucher(voucher: IVoucher) extends SExpr {
 }
 
 case class SEntity(entity: Entity) extends SExpr with Mutable {
+  override def asObject: Any = entity
+  override def pretty = table.pretty
+  override def embed = record.embed
+  override def getString = Some(record.show)
+  override protected def print_String = record.print
   override def titleInfo = entity.show
+  override protected def show_Content = Some(record.show)
+
+  def record: IRecord = entity.record
+  def table: STable = STable(Table.create(record))
+
+
+  def id: SExpr = SExpr.create(entity.id.string)
 }
 
 case class SSchema(schema: Schema) extends SExpr {
@@ -924,7 +939,7 @@ case class SVector(vector: Vector[SExpr]) extends SExpr {
   override protected def show_Content: Option[String] = Some(display)
   def length = vector.length
   def list: SList = SList.create(vector)
-  def head: Option[SExpr] = vector.headOption
+  def head: SExpr = vector.headOption.getOrElse(SNil)
   def tail: SVector = SVector(vector.tail)
   def at(i: Int): SExpr = vector(i)
   def +(rhs: SVector): SVector = RAISE.notImplementedYetDefect
@@ -1958,11 +1973,26 @@ object SExpr {
     case NonFatal(e) => SError(e)
   }
 
+  def runOrNotFound[T <: SExpr](key: String)(p: => Consequence[Option[T]]): SExpr = try {
+    p match {
+      case Consequence.Success(r, c) => r getOrElse SError.notFound(key)
+      case Consequence.Error(c) => SError(c)
+    }
+  } catch {
+    case NonFatal(e) => SError(e)
+  }
+
   def execute[T <: SExpr](p: => T): SExpr = try {
     p
   } catch {
     case NonFatal(e) => SError(e)
   }
+
+  def executeOrNotFound(key: String)(p: => Option[SExpr]): SExpr =
+    p.map(x => execute(x)).getOrElse(SError.notFound(key))
+
+  def orNotFound(key: String, p: Option[SExpr]): SExpr =
+    p.getOrElse(SError.notFound(key))
 
   def createOrError[T <: SExpr](p: => T): SExpr = execute(p)
 

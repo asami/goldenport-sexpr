@@ -14,7 +14,8 @@ import org.goldenport.util.NumberUtils
  *  version Jul. 14, 2019
  *  version Mar. 21, 2021
  *  version Apr. 12, 2021
- * @version Jun. 26, 2021
+ *  version Jun. 26, 2021
+ * @version Oct. 31, 2021
  * @author  ASAMI, Tomoharu
  */
 case class FunctionSpecification(
@@ -83,7 +84,7 @@ case class FunctionSpecification(
 
       def +(rhs: (Symbol, SExpr)) = rhs match {
         case (k, v) =>
-          val regex = s"""${FunctionSpecification.Parameter.ARGUMENT_PREFIX}(\d+)""".r // TODO
+          val regex = (FunctionSpecification.Parameter.ARGUMENT_PREFIX + """(\d+)""").r
           regex.findFirstMatchIn(k.name) match {
             case Some(s) =>
               NumberUtils.getInt(s.group(1)).

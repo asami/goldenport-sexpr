@@ -20,17 +20,17 @@ import org.goldenport.sexpr._
  *  version Nov. 27, 2019
  *  version Mar. 30, 2020
  *  version Feb. 26, 2021
- * @version May. 20, 2021
+ *  version May. 20, 2021
+ * @version Oct.  3, 2021
  * @author  ASAMI, Tomoharu
  */
 class StoreFeature(
   val config: RichConfig,
   val i18nContext: I18NContext,
-  val sqlContext: SqlContext
+  val sqlContext: SqlContext,
+  val factory: StoreFactory
 ) extends Loggable {
   import StoreFeature._
-
-  val factory = new StoreFactory(config, sqlContext)
 
   def getCollection(collection: Symbol): Option[Collection] = factory.getCollection(collection)
 
@@ -153,5 +153,10 @@ class StoreFeature(
 }
 
 object StoreFeature {
-  def now() = new StoreFeature(RichConfig.empty, I18NContext.default, SqlContext.now())
+  def now() = {
+    val config = RichConfig.empty
+    val sqlcontext = SqlContext.now()
+    val factory = new StoreFactory(config, sqlcontext)
+    new StoreFeature(config, I18NContext.default, sqlcontext , factory)
+  }
 }

@@ -12,11 +12,12 @@ import org.goldenport.sexpr.eval._
  *  version Mar. 24, 2019
  *  version Apr.  8, 2019
  *  version Oct.  3, 2019
- * @version Nov. 27, 2019
+ *  version Nov. 27, 2019
+ * @version Oct.  4, 2021
  * @author  ASAMI, Tomoharu
  */
 object SqlFunction {
-  val functions = Vector(Sql)
+  val functions = Vector(Sql, SqlCommit, SqlAbort)
 
   case object Sql extends IoFunction {
     val specification = FunctionSpecification("sql", 1)
@@ -79,8 +80,30 @@ object SqlFunction {
     }
 
     private def _execute(ctx: SqlContext, db: Option[Symbol], s: String) = {
-      db.map(ctx.execute(_, s)).getOrElse(ctx.mutate(s))
-      SBoolean.TRUE
+      val r = db.map(ctx.execute(_, s)).getOrElse(ctx.mutate(s))
+      SExpr.create(r)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
+  case object SqlCommit extends IoFunction {
+    val specification = FunctionSpecification("sql-commit", 0)
+
+    def apply(p: LispContext): LispContext = {
+      val r = p.sqlContext.commit()
+      p.toResult(SBoolean.TRUE)
+    }
+
+    def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
+  case object SqlAbort extends IoFunction {
+    val specification = FunctionSpecification("sql-abort", 0)
+
+    def apply(p: LispContext): LispContext = {
+      val r = p.sqlContext.abort()
+      p.toResult(SBoolean.TRUE)
     }
 
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
