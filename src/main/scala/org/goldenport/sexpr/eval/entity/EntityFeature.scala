@@ -5,16 +5,17 @@ import org.goldenport.hocon.RichConfig
 import org.goldenport.i18n.I18NContext
 import org.goldenport.value._
 import org.goldenport.record.store.Query
-import org.goldenport.record.v3.Record
+import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.v3.Table.HeaderStrategy
 import org.goldenport.sexpr._
+import org.goldenport.sexpr.eval.LispContext
 import org.goldenport.sexpr.eval.store.StoreFeature
 
 /*
  * @since   Sep. 18, 2021
  *  version Sep. 21, 2021
  *  version Oct.  2, 2021
- * @version Nov.  1, 2021
+ * @version Nov. 28, 2021
  * @author  ASAMI, Tomoharu
  */
 class EntityFeature(
@@ -46,19 +47,33 @@ class EntityFeature(
     collection.select(q, header)
   )
 
-  def create(collection: EntityCollection, rec: Record): SExpr = SExpr.execute(
+  def create(
+    collection: EntityCollection,
+    rec: Record
+  )(implicit ctx: LispContext): SExpr = SExpr.execute(
     collection.create(rec)
   )
 
-  def update(entity: Entity): SExpr = SExpr.execute(
-    ???
-  )
+  def update(
+    entity: Entity
+  )(implicit ctx: LispContext): SExpr = SExpr.execute {
+    factory.getCollection(entity.id.className).
+      map(update(_, entity.id, entity.persistentRecord)).
+      getOrElse(SError.notFound(entity.id.className))
+  }
 
-  def update(collection: EntityCollection, id: EntityId, rec: Record): SExpr = SExpr.execute(
+  def update(
+    collection: EntityCollection,
+    id: EntityId,
+    rec: IRecord
+  )(implicit ctx: LispContext): SExpr = SExpr.execute(
     collection.update(id.objectId, rec)
   )
 
-  def delete(collection: EntityCollection, id: EntityId): SExpr = SExpr.execute(
+  def delete(
+    collection: EntityCollection,
+    id: EntityId
+  )(implicit ctx: LispContext): SExpr = SExpr.execute(
     collection.delete(id.objectId)
   )
 

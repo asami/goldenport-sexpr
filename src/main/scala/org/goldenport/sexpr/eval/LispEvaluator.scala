@@ -43,7 +43,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Mar. 21, 2021
  *  version Apr. 20, 2021
  *  version May. 10, 2021
- * @version Sep. 20, 2021
+ *  version Sep. 20, 2021
+ * @version Nov. 29, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -358,6 +359,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       StringInterpolate, StringInterpolateFormat, StringFormat, StringMessage, StringMessageKey,
       PathGet, Transform, Xslt, Select,
       Fetch, Retry, Sh, Load, Save,
+      Print, Println,
       HttpGet, HttpPost, HttpPut, HttpDelete,
       VectorVerticalFill,
       MatrixHorizontalConcatenate, MatrixLoad, MatrixSave, MatrixChart,

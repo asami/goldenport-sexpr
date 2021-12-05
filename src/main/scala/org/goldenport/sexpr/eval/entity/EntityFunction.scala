@@ -11,7 +11,8 @@ import org.goldenport.sexpr.eval._
 /*
  * @since   Mar. 30, 2019
  *  version Sep. 20, 2021
- * @version Oct.  2, 2021
+ *  version Oct.  2, 2021
+ * @version Nov. 28, 2021
  * @author  ASAMI, Tomoharu
  */
 object EntityFunction {
@@ -89,7 +90,7 @@ object EntityFunction {
         collection <- p.param.entityCollection
         rec <- p.param.record
       } yield {
-        (collection |@| rec)(p.feature.entity.create(_, _)).valueOr(SError(_))
+        (collection |@| rec)(p.feature.entity.create(_, _)(p)).valueOr(SError(_))
       }
       val r = a.run(p.param.cursor(specification))
       p.toResult(r._2)
@@ -107,7 +108,7 @@ object EntityFunction {
         id <- p.param.idForEntity
         rec <- p.param.record
       } yield {
-        (collection |@| id |@| rec)(p.feature.entity.update(_, _, _)).valueOr(SError(_))
+        (collection |@| id |@| rec)(p.feature.entity.update(_, _, _)(p)).valueOr(SError(_))
       }
       val r = a.run(p.param.cursor(specification))
       p.toResult(r._2)
@@ -124,7 +125,7 @@ object EntityFunction {
         collection <- p.param.entityCollection
         id <- p.param.idForEntity
       } yield {
-        (collection |@| id)(p.feature.entity.delete(_, _)).valueOr(SError(_))
+        (collection |@| id)(p.feature.entity.delete(_, _)(p)).valueOr(SError(_))
       }
       val r = a.run(p.param.cursor(specification))
       p.toResult(r._2)

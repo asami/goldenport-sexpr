@@ -59,7 +59,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Mar. 21, 2021
  *  version Apr. 20, 2021
  *  version May. 20, 2021
- * @version Jun. 26, 2021
+ *  version Jun. 26, 2021
+ * @version Nov. 29, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -1471,6 +1472,24 @@ object LispFunction {
     }
 
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect
+  }
+
+  case object Print extends ParameterEvalFunction {
+    val specification = FunctionSpecification("print", 1)
+    def eval(p: Parameters) = {
+      val r: String = p.arguments.map(_.print).concatenate
+      print(r) // TODO console print
+      SString(r)
+    }
+  }
+
+  case object Println extends ParameterEvalFunction {
+    val specification = FunctionSpecification("println", 1)
+    def eval(p: Parameters) = {
+      val r = p.arguments.map(_.print).concatenate
+      println(r) // TODO console println
+      SString(r)
+    }
   }
 
   case object HttpGet extends IoFunction {

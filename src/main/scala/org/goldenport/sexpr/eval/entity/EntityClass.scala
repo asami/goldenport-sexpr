@@ -4,15 +4,16 @@ import org.goldenport.context.Consequence
 import org.goldenport.record.v3.IRecord
 import org.goldenport.record.v3.Field
 import org.goldenport.statemachine.StateMachine
+import org.goldenport.sexpr.eval.LispContext
 
 /*
  * @since   Sep. 18, 2021
  *  version Oct. 31, 2021
- * @version Nov.  1, 2021
+ * @version Nov. 28, 2021
  * @author  ASAMI, Tomoharu
  */
 trait EntityClass {
-  def create(p: IRecord): Consequence[Entity]
+  def create(p: IRecord)(implicit ctx: LispContext): Consequence[Entity]
   def reconstitute(p: IRecord): Consequence[Entity]
   def unmarshallProperties(p: IRecord): Consequence[IRecord]
   def store: EntityClass.Store

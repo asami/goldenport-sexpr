@@ -90,8 +90,9 @@ import org.goldenport.sexpr.script.Script
  *  version May. 30, 2021
  *  version Jun. 27, 2021
  *  version Jul. 12, 2021
-T *  version Sep. 25, 2021
-T * @version Oct. 31, 2021
+ *  version Sep. 25, 2021
+ *  version Oct. 31, 2021
+ * @version Nov. 21, 2021
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -544,7 +545,7 @@ case class SError(
   def RAISE: Nothing = throw new SError.SErrorException(this)
 
   override def asObject = exception getOrElse this
-  def message: String = _incident_message orElse _exception_message orElse _error_message getOrElse conclusion.message.en
+  def message: String = _incident_message orElse _exception_message orElse _error_message getOrElse conclusion.message
   private def _incident_message = incident.map(_.show)
   private def _exception_message = exception.map(_.toString)
   private def _error_message = errors.map(_.list.map(_.show).mkString(";"))
@@ -836,6 +837,7 @@ case class SEntity(entity: Entity) extends SExpr with Mutable {
   override def titleInfo = entity.show
   override protected def show_Content = Some(record.show)
 
+  def attributes: IRecord = entity.attributes
   def record: IRecord = entity.record
   def table: STable = STable(Table.create(record))
 

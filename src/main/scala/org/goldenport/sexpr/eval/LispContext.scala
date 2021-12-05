@@ -25,6 +25,7 @@ import org.goldenport.bag.ChunkBag
 import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.incident.{Incident => LibIncident}
 import org.goldenport.matrix.INumericalOperations
+import org.goldenport.statemachine.{ExecutionContext => StateMachineContext}
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.entity.EntityFactory
 
@@ -50,7 +51,8 @@ import org.goldenport.sexpr.eval.entity.EntityFactory
  *  version Mar. 12, 2021
  *  version Apr. 13, 2021
  *  version May.  9, 2021
- * @version Sep. 20, 2021
+ *  version Sep. 20, 2021
+ * @version Nov. 28, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
@@ -67,6 +69,7 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
   def incident: Option[LibIncident]
   def numericalOperations: INumericalOperations
   def traceContext: TraceContext
+//  def statemachineContext: StateMachineContext
   def futureEffect: Option[Effect.FutureEffect]
 
   def locale = i18nContext.locale
@@ -525,6 +528,7 @@ object LispContext {
     bindings: Record,
     futureEffect: Option[Effect.FutureEffect] = None
   ) extends LispContext {
+    def statemachineContext = RAISE.notImplementedYetDefect
     def pure(p: SExpr) = copy(value = p)
     def getValue: Option[SExpr] = Some(value)
     def createContextForFuture(effect: Effect.FutureEffect): LispContext =
