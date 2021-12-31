@@ -60,7 +60,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Apr. 20, 2021
  *  version May. 20, 2021
  *  version Jun. 26, 2021
- * @version Nov. 29, 2021
+ *  version Nov. 29, 2021
+ * @version Dec. 20, 2021
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -485,14 +486,15 @@ trait IoFunction extends EffectFunction { // I/O bound
     timeout: Option[Duration]
   ): SExpr = {
     val is = in.flatMap(_.getInputSource)
-    val result = new ShellCommand(commands, env, dir, is, timeout).execute
+    val scmd = new ShellCommand(commands, env, dir, is, timeout)
+    val result = scmd.execute
     SWait(name, { () =>
       val code = result.waitFor
       // println(s"execute_shell_command: $commands => $code")
       if (code == 0)
         _success(u, result)
       else
-        _failure(u, result)
+        _failure(u, scmd, result)
     })
   }
 
@@ -501,12 +503,12 @@ trait IoFunction extends EffectFunction { // I/O bound
     c.toResult(stdout, props)
   }
 
-  private def _failure(c: LispContext, p: ShellCommand.Result) = {
+  private def _failure(c: LispContext, cmd: ShellCommand, p: ShellCommand.Result) = {
     val (props, stdout, stderr) = _properties(p)
     val aux = stderr.getString.flatMap(s =>
       Strings.tolines(s).find(_.nonEmpty).map(x => s": $x")
     ).getOrElse("")
-    val msg = s"Shell Command(${p.waitFor})${aux}"
+    val msg = s"Shell Command[${cmd.show}](${p.waitFor})${aux}"
     val error = SError(msg, stdout, stderr)
     c.toResult(error, props)
   }
