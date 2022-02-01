@@ -92,7 +92,8 @@ import org.goldenport.sexpr.script.Script
  *  version Jul. 12, 2021
  *  version Sep. 25, 2021
  *  version Oct. 31, 2021
- * @version Nov. 21, 2021
+ *  version Nov. 21, 2021
+ * @version Feb.  1, 2022
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -243,6 +244,10 @@ sealed trait SExpr extends Showable {
   // def detailContent: Vector[String] = getString.map(Strings.tolines).getOrElse(Vector.empty)
 
   def toBag: Either[BlobBag, ClobBag] = Right(ClobBag.create(marshall))
+  def toChunkBag: ChunkBag = toBag match {
+    case Right(r) => r
+    case Left(l) => l
+  }
 
   def carOrRaise: SExpr = RAISE.syntaxErrorFault(s"$this")
   def cdrOrRaise: SExpr = RAISE.syntaxErrorFault(s"$this")
@@ -746,13 +751,21 @@ case class SConsequence(value: SExpr, conclusion: Conclusion) extends SExpr {
 }
 
 case class SBinary(
-  binary: ChunkBag,
-  mime: MimeType = MimeType.application_octet_stream
+  binary: ChunkBag
 ) extends SExpr {
 //  override def print = show
 //  override def show = detailTitle
   override def titleInfo = binary.size.toString
   override def descriptionContent = Vector.empty
+  def mimetype: MimeType = binary.mimetype
+}
+object SBinary {
+  def create(p: ChunkBag): SBinary = create(MimeType.application_octet_stream, "bin", p)
+
+  def create(mime: MimeType, suffix: String, p: ChunkBag): SBinary = {
+    val bag = BlobBag.create("binary", suffix, mime, p)
+    SBinary(bag)
+  }
 }
 
 case class SI18NString(string: I18NString) extends SExpr {
@@ -1570,13 +1583,20 @@ object SPeriod {
   def yearMonthDay(y: Int, m: Int, d: Int): SPeriod = SPeriod(PeriodUtils.yearMonthDay(y, m, d))
 }
 
-case class SImage(mime: MimeType, binary: ChunkBag) extends SExpr {
+case class SImage(binary: BlobBag) extends SExpr {
   override def asObject = binary
+  override def toBag = Left(binary)
+  def mimetype: MimeType = binary.mimetype
 }
 object SImage {
-  def png(p: ChunkBag): SImage = SImage(MimeType.image_png, p)
-  def webp(p: ChunkBag): SImage = SImage(MimeType.image_webp, p)
-  def svg(p: ChunkBag): SImage = SImage(MimeType.image_svg_xml, p)
+  def png(p: ChunkBag): SImage = create("png", MimeType.image_png, p)
+  def webp(p: ChunkBag): SImage = create("webp", MimeType.image_webp, p)
+  def svg(p: ChunkBag): SImage = create("svg", MimeType.image_svg_xml, p)
+
+  def create(suffix: String, mime: MimeType, p: ChunkBag): SImage = {
+    val bag = BlobBag.create("image", suffix, mime, p)
+    SImage(bag)
+  }
 }
 
 case class SMoney(money: Money) extends SExpr {
