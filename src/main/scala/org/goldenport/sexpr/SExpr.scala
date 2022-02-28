@@ -93,7 +93,8 @@ import org.goldenport.sexpr.script.Script
  *  version Sep. 25, 2021
  *  version Oct. 31, 2021
  *  version Nov. 21, 2021
- * @version Feb.  1, 2022
+ *  version Feb. 25, 2022
+ * @version Mar.  1, 2022
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -626,6 +627,11 @@ object SError {
       SError(_internal_server_error, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
   }
 
+  def apply(c: Conclusion, s: String, params: Seq[SExpr]): SError =
+    apply(c, I18NMessage(s, params.map(_.embed)))
+
+  def apply(c: Conclusion, s: I18NMessage): SError = apply(c.withMessage(s))
+
   def create(p: SError, ps: Iterable[SError]): SError = apply(NonEmptyVector(p, ps.toVector))
 
   def merge(label: String, e: SErrorException): SError = SError(e.error.conclusion.withMessage(label),  errors = Some(NonEmptyVector(e.error)))
@@ -645,6 +651,11 @@ object SError {
   def notFound(key: String): SError = {
     val s = s"'${key}' is not found."
     SError(_not_found, s)
+  }
+
+  def notFoundIn(key: SExpr, target: SExpr): SError = {
+    val s = "{0} is not found in [{1}]."
+    SError(_not_found, s, List(key, target))
   }
 
   def functionNotFound(p: SAtom): SError = functionNotFound(p.name)
@@ -2144,9 +2155,14 @@ object SExpr {
 
   def toPrettyJson(json: JsValue): String = Json.prettyPrint(json)
 
+  val symboledCRLF = "♼"
+  val symboledCR = "♻"
+  val symboledLF = "♲"
+
   def escapeDisplay(s: String): String =
     if (s.contains('\n') | s.contains('\r')) {
-      s.replace("\n", "[NL]").replace("\r", "[CR]")
+//      s.replace("\n", "[NL]").replace("\r", "[CR]")
+      s.replace("\r\n", symboledCRLF).replace("\n", symboledLF).replace("\r", symboledCR)
     } else {
       s
     }

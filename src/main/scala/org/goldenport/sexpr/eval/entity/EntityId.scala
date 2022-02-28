@@ -10,14 +10,17 @@ import org.goldenport.values.CompactUuid
  * @since   Sep. 18, 2021
  *  version Sep. 24, 2021
  *  version Oct. 30, 2021
- * @version Nov.  1, 2021
+ *  version Nov.  1, 2021
+ * @version Feb. 24, 2022
  * @author  ASAMI, Tomoharu
  */
 case class EntityId(
   className: String,
   objectId: Id
 ) extends Showable {
-  def string = s"${className}-${objectId.string}"
+  import EntityId._
+
+  def string = s"${className}${DELIMITER}${objectId.string}"
   def print = string
   def display = string
   def show = string
@@ -25,14 +28,16 @@ case class EntityId(
 }
 
 object EntityId {
+  val DELIMITER = ":"
+
   def apply(classname: String, id: String): EntityId = EntityId(classname, Id(id))
 
   def apply(classname: String, id: Long): EntityId = EntityId(classname, Id(id))
 
-  def create(p: String): EntityId = Strings.totokens(p, "-") match {
+  def create(p: String): EntityId = Strings.totokens(p, DELIMITER) match {
     case Nil => Conclusion.invalidTokenFault(p).RAISE
     case x :: Nil => apply("", x)
-    case x :: xs => apply(x, xs.mkString("-"))
+    case x :: xs => apply(x, xs.mkString(DELIMITER))
   }
 
   def generate(classname: String): EntityId = EntityId(classname, Id(CompactUuid.generateString()))

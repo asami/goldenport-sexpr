@@ -61,7 +61,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version May. 20, 2021
  *  version Jun. 26, 2021
  *  version Nov. 29, 2021
- * @version Dec. 20, 2021
+ *  version Dec. 20, 2021
+ * @version Feb.  9, 2022
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -1050,13 +1051,13 @@ object LispFunction {
         }
       }
       val target = x
-      _traverse(returntype, xpath, target)
+      traverse(returntype, xpath, target)
     }
 
     def traverse(rtype: ReturnType, xpath: SXPath, target: SExpr): SExpr =
-      _traverse(rtype, xpath, target)
+      _traverse(rtype, xpath, target) getOrElse SError.notFoundIn(xpath, target)
 
-    private def _traverse(rtype: ReturnType, xpath: SXPath, target: SExpr): SExpr = try {
+    private def _traverse(rtype: ReturnType, xpath: SXPath, target: SExpr): Option[SExpr] = try {
       target match {
         case m: SXml => _traverse_xml(rtype, xpath, m)
         case m: SHtml => _traverse_html(rtype, xpath, m)
@@ -1066,7 +1067,7 @@ object LispFunction {
         case m => _traverse_bean(rtype, xpath, m) // SError.syntaxError(s"Unaviable for xpath: $m")
       }
     } catch {
-      case NonFatal(e) => SError(e)
+      case NonFatal(e) => Some(SError(e))
     }
 
     private def _traverse_xml(rtype: ReturnType, xpath: SXPath, p: SXml) =
@@ -1076,7 +1077,7 @@ object LispFunction {
       rtype: ReturnType,
       xpath: SXPath,
       p: org.w3c.dom.Node
-    ) = {
+    ): Option[SExpr] = {
       val engine = XPathFactory.newInstance().newXPath()
       val r = Option(engine.compile(xpath.path).evaluate(p, rtype.xpath))
       val x0 = rtype.xpath match {
@@ -1114,7 +1115,7 @@ object LispFunction {
           a
         }
       )
-      SExpr.createOrNil(x)
+      x.map(SExpr.create)
     }
 
     // private def _traverse_xml_xpath_string(xpath: SXPath, p: SXml) =
@@ -1147,28 +1148,28 @@ object LispFunction {
     private def _traverse_html(rtype: ReturnType, xpath: SXPath, p: SHtml) =
       _traverse_dom_xpath(rtype, xpath, p.dom)
 
-    private def _traverse_json(rtype: ReturnType, xpath: SXPath, p: SJson) = {
+    private def _traverse_json(rtype: ReturnType, xpath: SXPath, p: SJson): Option[SExpr] = {
       val pc = JXPathContext.newContext(p.json)
       _traverse(rtype, xpath, pc)
     }
 
-    private def _traverse_record(rtype: ReturnType, xpath: SXPath, p: SRecord) = {
+    private def _traverse_record(rtype: ReturnType, xpath: SXPath, p: SRecord): Option[SExpr] = {
       // val pc = JXPathContext.newContext(p.asObject)
       val pc = RecordJxPathContext.newContext(p.record)
       _traverse(rtype, xpath, pc)
     }
 
-    private def _traverse_table(rtype: ReturnType, xpath: SXPath, p: STable) = {
+    private def _traverse_table(rtype: ReturnType, xpath: SXPath, p: STable): Option[SExpr] = {
       val pc = JXPathContext.newContext(p.table)
       _traverse(rtype, xpath, pc)
     }
 
-    private def _traverse_bean(rtype: ReturnType, xpath: SXPath, p: SExpr) = {
+    private def _traverse_bean(rtype: ReturnType, xpath: SXPath, p: SExpr): Option[SExpr] = {
       val pc = JXPathContext.newContext(p.asObject)
       _traverse(rtype, xpath, pc)
     }
 
-    private def _traverse(rtype: ReturnType, xpath: SXPath, pc: JXPathContext): SExpr = {
+    private def _traverse(rtype: ReturnType, xpath: SXPath, pc: JXPathContext): Option[SExpr] = {
       def v0 = rtype.xpath match {
         case XPathConstants.BOOLEAN => pc.getValue(xpath.path, classOf[Boolean])
         case XPathConstants.NUMBER => pc.getValue(xpath.path, classOf[BigDecimal])
@@ -1179,14 +1180,14 @@ object LispFunction {
 
       val v = if (rtype.auto) {
         pc.iterate(xpath.path).asScala.toList match {
-          case Nil => SNil
-          case x :: Nil => x
-          case xs => xs
+          case Nil => None
+          case x :: Nil => Some(x)
+          case xs => Some(xs)
         }
       } else {
-        v0
+        Some(v0)
       }
-      SExpr.create(v)
+      v.map(SExpr.create)
     }
 
     // private def _traverse_jxpath_value(xpath: String, pc: JXPathContext): SExpr = {
