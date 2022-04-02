@@ -11,7 +11,8 @@ import org.goldenport.values.CompactUuid
  *  version Sep. 24, 2021
  *  version Oct. 30, 2021
  *  version Nov.  1, 2021
- * @version Feb. 24, 2022
+ *  version Feb. 24, 2022
+ * @version Mar. 19, 2022
  * @author  ASAMI, Tomoharu
  */
 case class EntityId(
@@ -24,7 +25,6 @@ case class EntityId(
   def print = string
   def display = string
   def show = string
-  def embed = string
 }
 
 object EntityId {

@@ -62,7 +62,9 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Jun. 26, 2021
  *  version Nov. 29, 2021
  *  version Dec. 20, 2021
- * @version Feb.  9, 2022
+ *  version Feb.  9, 2022
+ *  version Mar. 27, 2022
+ * @version Apr.  3, 2022
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -1055,7 +1057,11 @@ object LispFunction {
     }
 
     def traverse(rtype: ReturnType, xpath: SXPath, target: SExpr): SExpr =
-      _traverse(rtype, xpath, target) getOrElse SError.notFoundIn(xpath, target)
+      _traverse(rtype, xpath, target) getOrElse {
+        // val i = NotFoundIncident(xpath, target)
+        // SError(i)
+        SError.notFoundIn(xpath, target)
+      }
 
     private def _traverse(rtype: ReturnType, xpath: SXPath, target: SExpr): Option[SExpr] = try {
       target match {

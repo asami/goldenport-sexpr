@@ -20,6 +20,7 @@ import org.goldenport.parser._
 import org.goldenport.context.{StatusCode, Conclusion, Consequence}
 import org.goldenport.i18n.{I18NString, I18NTemplate}
 import org.goldenport.i18n.I18NMessage
+import org.goldenport.i18n.StringFormatter
 import org.goldenport.console.Message
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.extension.IWindow
@@ -94,7 +95,7 @@ import org.goldenport.sexpr.script.Script
  *  version Oct. 31, 2021
  *  version Nov. 21, 2021
  *  version Feb. 25, 2022
- * @version Mar.  1, 2022
+ * @version Mar. 27, 2022
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -223,7 +224,7 @@ sealed trait SExpr extends Showable {
   /*
    * Show short representation to embeded in container format like table.
    */
-  def embed: String = display
+  // def embed: String = display
 
   /*
    * Beautified representation.
@@ -2155,14 +2156,15 @@ object SExpr {
 
   def toPrettyJson(json: JsValue): String = Json.prettyPrint(json)
 
-  val symboledCRLF = "♼"
-  val symboledCR = "♻"
-  val symboledLF = "♲"
+  // val symboledCRLF = "♼"
+  // val symboledCR = "♻"
+  // val symboledLF = "♲"
 
   def escapeDisplay(s: String): String =
     if (s.contains('\n') | s.contains('\r')) {
 //      s.replace("\n", "[NL]").replace("\r", "[CR]")
-      s.replace("\r\n", symboledCRLF).replace("\n", symboledLF).replace("\r", symboledCR)
+// s.replace("\r\n", symboledCRLF).replace("\n", symboledLF).replace("\r", symboledCR)
+      StringFormatter.display.escapeDisplay(s)
     } else {
       s
     }
