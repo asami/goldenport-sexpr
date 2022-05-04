@@ -2,6 +2,7 @@ package org.goldenport.sexpr.eval
 
 import java.net.URL
 import org.goldenport.value._
+import org.goldenport.context.Consequence
 import org.goldenport.cli.ShellCommand
 import org.goldenport.bag.ChunkBag
 import org.goldenport.i18n.I18NString
@@ -9,18 +10,38 @@ import org.goldenport.record.v3.Record
 import org.goldenport.record.http
 import org.goldenport.incident.{Incident => LibIncident, ApplicationIncident}
 import org.goldenport.sexpr._
+import org.goldenport.util.AnyUtils
 import Incident._
 
 /*
  * @since   Apr. 12, 2019
  *  version Jun. 24, 2019
- * @version Jun. 17, 2021
+ *  version Jun. 17, 2021
+ * @version Apr. 16, 2022
  * @author  ASAMI, Tomoharu
  */
 trait Incident extends ApplicationIncident {
   def kind: Kind
   def bindings: Record
   def show: String
+}
+
+case class FunctionIncident(
+  start: Long,
+  end: Long,
+  name: String,
+  result: SExpr,
+  message: Option[I18NString] = None
+) extends Incident {
+  val kind = ShellCommandKind // TODO
+  def exception = ??? // result.left.toOption
+  def show = kind.name // TODO
+
+  lazy val bindings: Record = Record.empty // TODO
+}
+object FunctionIncident {
+  def apply(start: Long, name: String, result: SExpr): FunctionIncident =
+    FunctionIncident(start, System.currentTimeMillis, name, result)
 }
 
 case class ShellCommandIncident(
@@ -156,6 +177,37 @@ object FileIncident {
     FileIncident(start, System.currentTimeMillis, None, url, Left(e))
 }
 
+case class XPathIncident(
+  start: Long,
+  end: Long,
+  xpath: SXPath,
+  target: SExpr,
+  result: Consequence[SExpr],
+  message: Option[I18NString] = None
+) extends Incident {
+  val kind = XPathKind
+  def exception = result.getException
+
+  lazy val bindings: Record = Record.data(
+    PROP_INCIDENT_KIND -> SString(kind.name)
+  )
+
+  def show = s"(${xpath.embed}, ${target.embed}) => ${_show_result}"
+
+  private def _show_result = result match {
+    case Consequence.Success(r, c) => AnyUtils.toShow(r)
+    case Consequence.Error(c) => c.message
+  }
+}
+object XPathIncident {
+  def notFound(
+    start: Long,
+    end: Long,
+    xpath: SXPath,
+    target: SExpr
+  ): XPathIncident = XPathIncident(start, end, xpath, target, Consequence.notFound(xpath.show))
+}
+
 case class InvariantIncident(
   start: Long,
   end: Long
@@ -262,6 +314,10 @@ object Incident {
 
   case object FileKind extends Kind {
     val name = "file"
+  }
+
+  case object XPathKind extends Kind {
+    val name = "xpath"
   }
 
   case object AssertionKind extends Kind {

@@ -36,7 +36,8 @@ import org.goldenport.value._
  *  version Apr. 12, 2021
  *  version May. 20, 2021
  *  version Jun. 13, 2021
- * @version Sep. 21, 2021
+ *  version Sep. 21, 2021
+ * @version Apr.  4, 2022
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -316,6 +317,9 @@ object Parameters {
     protected def to_error[T](newspec: FunctionSpecification, e: SError): (Cursor, ValidationNel[SError, T]) =
       (copy(spec = newspec), Failure(NonEmptyList(e)))
 
+    protected def to_error[T](e: SError): (Cursor, ValidationNel[SError, T]) =
+      (this, Failure(NonEmptyList(e)))
+
     protected def run_cursor[T](body: => ValidationNel[SError, T]): (Cursor, ValidationNel[SError, T]) = try {
       val r = body
       val nextspec = spec // TODO
@@ -327,6 +331,22 @@ object Parameters {
       case NonFatal(e) => 
         val nextspec = spec // TODO
         to_result_pop(nextspec, Failure(SError(e)).toValidationNel)
+    }
+
+    def error(p: SError): (Cursor, ValidationNel[SError, SExpr]) = RAISE.notImplementedYetDefect
+
+    def lift[A](p: A): (Cursor, ValidationNel[SError, A]) = RAISE.notImplementedYetDefect
+
+    def argument: (Cursor, ValidationNel[SError, SExpr]) = try {
+      parameters.arguments match {
+        case Nil => to_error(spec, SError.notFound("empty"))
+        case x :: xs => 
+          val r = Success(x).toValidationNel
+          val nextspec = spec // TODO
+          to_result_pop(nextspec, r)
+      }
+    } catch {
+      case NonFatal(e) => to_error(SError(e))
     }
 
     def arguments: (Cursor, ValidationNel[SError, List[SExpr]]) = argumentList[SExpr]

@@ -10,6 +10,7 @@ import org.goldenport.RAISE
 import org.goldenport.log.LogContext
 import org.goldenport.i18n.I18NContext
 import org.goldenport.context.Effect
+import org.goldenport.context.DateTimeContext
 import org.goldenport.trace.{Trace, TraceContext}
 import org.goldenport.trace.Container
 import org.goldenport.record.v3.{IRecord, Record}
@@ -52,12 +53,14 @@ import org.goldenport.sexpr.eval.entity.EntityFactory
  *  version Apr. 13, 2021
  *  version May.  9, 2021
  *  version Sep. 20, 2021
- * @version Nov. 28, 2021
+ *  version Nov. 28, 2021
+ * @version Apr. 24, 2022
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
     with ScriptEnginePart with SparkPart {
   def config: LispConfig
+  def dateTimeContext: DateTimeContext
   def i18nContext: I18NContext
   def evaluator: LispContext => LispContext
   def serviceLogic: UnitOfWorkLogic
@@ -66,7 +69,7 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
   def sqlContext: SqlContext
   def resourceManager: ResourceManager
   def feature: FeatureContext
-  def incident: Option[LibIncident]
+  def incident: IncidentSequence
   def numericalOperations: INumericalOperations
   def traceContext: TraceContext
 //  def statemachineContext: StateMachineContext
@@ -81,6 +84,8 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
   def takeResourceHandle(p: URL): ResourceHandle = resourceManager.takeHandle(p)
 
   def pure(p: SExpr): LispContext
+  def pure(p: SExpr, i: IncidentSequence): LispContext
+  def pure(p: SExpr, i: Seq[LibIncident]): LispContext = pure(p, IncidentSequence(i))
 
   override def resolve: LispContext = super.resolve.asInstanceOf[LispContext]
 
@@ -168,23 +173,32 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
 
   override final def toResult(expr: SExpr): LispContext = toResult(expr, Record.empty)
 
-  override final def toResult(expr: SExpr, bindings: IRecord): LispContext = toResult(expr, None, bindings)
+  override final def toResult(expr: SExpr, bindings: IRecord): LispContext = toResult(expr, bindings, IncidentSequence.empty)
 
-  def toResult(expr: SExpr, incident: LibIncident): LispContext = toResult(expr, Some(incident), Record.empty)
+  def toResult(expr: SExpr, incident: LibIncident): LispContext = toResult(expr, Record.empty, IncidentSequence(incident))
 
-  def toResult(expr: SExpr, incident: Option[LibIncident], bindings: IRecord): LispContext
+  override def toResult(expr: SExpr, bindings: IRecord, i: IncidentSequence): LispContext
+
+//  def toResult(expr: SExpr, incident: Option[LibIncident], bindings: IRecord): LispContext
 
   override final def toResult(p: Response): LispContext = toResult(toSExpr(p))
 
-  def toResult(p: (Parameters.Cursor, ValidationNel[SError, SExpr])): LispContext = {
+  def toResult(p: (Parameters.Cursor, ValidationNel[SError, SExpr])): LispContext =
     p._2 match {
       case Success(s) => toResult(s)
-      case Failure(es) => es.toList match {
-        case Nil => toResult(SNil)
-        case x :: Nil => toResult(x)
-        case x :: xs => toResult(SError.create(x, xs))
-      }
+      case Failure(es) => toResult(es)
     }
+
+  def toResultSI(p: (Parameters.Cursor, ValidationNel[SError, (SExpr, Incident)])): LispContext =
+    p._2 match {
+      case Success(s) => toResult(s._1, s._2)
+      case Failure(es) => toResult(es)
+    }
+
+  def toResult(p: NonEmptyList[SError]): LispContext = p.toList match {
+    case Nil => toResult(SNil)
+    case x :: Nil => toResult(x)
+    case x :: xs => toResult(SError.create(x, xs))
   }
 
   override def addBindings(bindings: IRecord): LispContext
@@ -244,7 +258,8 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
       _merge_trace(x, t)
     }
     val v = r.getValue getOrElse SNil
-    ctx.pure(v)
+    val i = r.incident
+    ctx.pure(v, i)
   } catch {
     case NonFatal(e) => ctx.pure(SError(e))
   }
@@ -458,6 +473,7 @@ object LispContext {
 
   def apply(
     config: LispConfig,
+    datetimecontext: DateTimeContext,
     i18ncontext: I18NContext,
     querycontext: QueryExpression.Context,
     entityfactory: EntityFactory,
@@ -478,11 +494,12 @@ object LispContext {
       sqlcontext,
       entityfactory
     )
-    apply(config, i18ncontext, querycontext, featurecontext, evaluator, x)
+    apply(config, datetimecontext, i18ncontext, querycontext, featurecontext, evaluator, x)
   }
 
   def apply(
     config: LispConfig,
+    datetimecontext: DateTimeContext,
     i18ncontext: I18NContext,
     querycontext: QueryExpression.Context,
     feature: FeatureContext,
@@ -495,6 +512,7 @@ object LispContext {
     val numericalOperations = config.numericalOperations
     PlainLispContext(
       config,
+      datetimecontext,
       i18ncontext,
       TraceContext.create(),
       evaluator,
@@ -506,13 +524,14 @@ object LispContext {
       numericalOperations,
       feature,
       x,
-      None,
+      IncidentSequence.empty,
       Record.empty
     )
   }
 
   case class PlainLispContext(
     config: LispConfig,
+    dateTimeContext: DateTimeContext,
     i18nContext: I18NContext,
     traceContext: TraceContext,
     evaluator: LispContext => LispContext,
@@ -524,16 +543,18 @@ object LispContext {
     numericalOperations: INumericalOperations,
     feature: FeatureContext,
     value: SExpr,
-    incident: Option[LibIncident],
+    incident: IncidentSequence,
     bindings: Record,
     futureEffect: Option[Effect.FutureEffect] = None
   ) extends LispContext {
     def statemachineContext = RAISE.notImplementedYetDefect
     def pure(p: SExpr) = copy(value = p)
+    def pure(p: SExpr, i: IncidentSequence) = copy(value = p, incident = incident + i)
     def getValue: Option[SExpr] = Some(value)
     def createContextForFuture(effect: Effect.FutureEffect): LispContext =
       copy(traceContext = TraceContext.create(), futureEffect = Some(effect))
-    def toResult(p: SExpr, i: Option[LibIncident], b: IRecord) = copy(value = p, incident = i, bindings = bindings + b.toRecord)
+//    def toResult(p: SExpr, i: Option[LibIncident], b: IRecord) = copy(value = p, incident = incident + i, bindings = bindings + b.toRecord)
+    def toResult(p: SExpr, b: IRecord, i: IncidentSequence) = copy(value = p, incident = incident + i, bindings = bindings + b.toRecord)
     def addBindings(p: IRecord) = copy(bindings = bindings + p.toRecord)
   }
 }

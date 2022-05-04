@@ -64,7 +64,7 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Dec. 20, 2021
  *  version Feb.  9, 2022
  *  version Mar. 27, 2022
- * @version Apr.  3, 2022
+ * @version Apr. 16, 2022
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -418,9 +418,16 @@ trait ParameterEvalFunction extends EvalFunction {
 }
 
 trait CursorEvalFunction extends EvalFunction {
+  protected def is_normalize_auto: Boolean = true
+
   def apply(u: LispContext): LispContext = {
+    val resolved = u.parameters // specification.resolve(p.parameters)
+    val params = if (is_normalize_auto)
+      resolved.map(normalize_auto(u, _))
+    else
+      resolved
     val a = eval(u)
-    val r = a.run(u.param.cursor(specification))
+    val r = a.run(u.param.cursor(specification, params))
     u.toResult(r)
   }
 
@@ -995,7 +1002,7 @@ object LispFunction {
     }
   }
 
-  case object PathGet extends ParameterEvalFunction {
+  case object PathGet extends CursorEvalFunction {
     import javax.xml.namespace.QName
     import javax.xml.xpath._
     import org.apache.commons.jxpath._
@@ -1037,31 +1044,59 @@ object LispFunction {
         case XString => stringType
         case m => ReturnType(m, XPathConstants.STRING)
       }
+
+      def parse(p: Option[String]): Consequence[ReturnType] = Consequence(apply(p))
     }
 
     // override def isDefinedAt(p: LispContext): Boolean =
     //   // p.value.isInstanceOf[SXPath] || is_defined_at(p)
     //   is_defined_at(p)
 
-    def eval(p: Parameters) = {
-      val returntype: ReturnType = ReturnType(p.getPropertyString('type))
-      val (xpath, x) = p.arguments(0) match {
-        case m: SXPath => (m, p.arguments(1))
-        case m => p.arguments(1) match {
-          case mm: SXPath => (mm, m)
-          case mm => RAISE.syntaxErrorFault(s"No xpath both ${m} and ${mm}")
+    // def eval(p: Parameters) = {
+    //   val returntype: ReturnType = ReturnType(p.getPropertyString('type))
+    //   val (xpath, x) = p.arguments(0) match {
+    //     case m: SXPath => (m, p.arguments(1))
+    //     case m => p.arguments(1) match {
+    //       case mm: SXPath => (mm, m)
+    //       case mm => RAISE.syntaxErrorFault(s"No xpath both ${m} and ${mm}")
+    //     }
+    //   }
+    //   val target = x
+    //   traverse(returntype, xpath, target)
+    // }
+
+    def eval(u: LispContext): CursorResult = for {
+      t <- u.param.getString('type)
+      p1 <- u.param.argument
+      p2 <- u.param.argument
+    } yield (t |@| p1 |@| p2)(_traverse(u)(_, _, _))
+
+    private def _traverse(u: LispContext)(t: Option[String], p1: SExpr, p2: SExpr): SExpr =
+      SExpr.run {
+        for {
+          rt <- ReturnType.parse(t)
+        } yield p1 match {
+          case m: SXPath => traverse(u, rt, m, p2)
+          case _ => p2 match {
+            case mm: SXPath => traverse(u, rt, mm, p1)
+            case _ => SError(s"No xpath both ${p1} and ${p2}")
+          }
         }
       }
-      val target = x
-      traverse(returntype, xpath, target)
+
+    def traverse(u: LispContext, rtype: ReturnType, xpath: SXPath, target: SExpr): SExpr = {
+      val start = u.dateTimeContext.timestamp
+      _traverse(rtype, xpath, target) match {
+        case Some(s) =>
+          s
+        case None => 
+          val i = XPathIncident.notFound(start, u.dateTimeContext.timestamp, xpath, target)
+          SError(i)
+      }
     }
 
     def traverse(rtype: ReturnType, xpath: SXPath, target: SExpr): SExpr =
-      _traverse(rtype, xpath, target) getOrElse {
-        // val i = NotFoundIncident(xpath, target)
-        // SError(i)
-        SError.notFoundIn(xpath, target)
-      }
+      _traverse(rtype, xpath, target) getOrElse SError.notFoundIn(xpath, target)
 
     private def _traverse(rtype: ReturnType, xpath: SXPath, target: SExpr): Option[SExpr] = try {
       target match {
@@ -1433,11 +1468,13 @@ object LispFunction {
       } yield {
         (strategy |@| args) { (s, xs) =>
           val r = execute_shell_command(p, xs).resolve // IoFunction is implicitly on SFuture.
-          SExpr.create(s, r)
+          val ri1 = SExpr.create(s, r)
+          val ri2 = FunctionIncident(0L, "sh", ri1)
+          (ri1, ri2)
         }
       }
-      val r = a.run(p.param.cursor(specification))
-      p.toResult(r)
+      val ri = a.run(p.param.cursor(specification))
+      p.toResultSI(ri)
     }
 
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect

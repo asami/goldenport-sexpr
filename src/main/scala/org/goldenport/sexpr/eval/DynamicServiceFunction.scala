@@ -17,7 +17,8 @@ import org.goldenport.sexpr._
  *  version Mar.  4, 2019
  *  version Apr. 12, 2019
  *  version Jun.  9, 2019
- * @version May. 13, 2020
+ *  version May. 13, 2020
+ * @version Apr. 24, 2022
  * @author  ASAMI, Tomoharu
  */
 case class DynamicServiceFunction(
@@ -58,14 +59,14 @@ case class DynamicServiceFunction(
         _failure(start, p, result)
     })
     val r = w.resolveContext
-    r.incident.flatMap {
-      case m: ShellCommandIncident =>
-        if (m.isNotFound)
-          None
-        else
-          Some(r)
-      case _ => Some(r)
+    val isnotfound = r.incident.incidents.exists {
+      case m: ShellCommandIncident => m.isNotFound
+      case _ => false
     }
+    if (isnotfound)
+      None
+    else
+      Some(r)
   }
 
   private def _success(start: Long, c: LispContext, p: ShellCommand.Result) = {

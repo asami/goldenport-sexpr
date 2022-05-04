@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import scala.util.control.NonFatal
 import org.goldenport.RAISE
 import org.goldenport.log.LogMark, LogMark._
+import org.goldenport.context.DateTimeContext
 import org.goldenport.i18n.I18NContext
 import org.goldenport.parser.CommandParser
 import org.goldenport.record.v3.Record
@@ -44,18 +45,21 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Apr. 20, 2021
  *  version May. 10, 2021
  *  version Sep. 20, 2021
- * @version Nov. 29, 2021
+ *  version Nov. 29, 2021
+ * @version Apr.  4, 2022
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
     with JXPathPart[C] {
   def config: LispConfig
+  def dateTimeContext: DateTimeContext
   def i18nContext: I18NContext
   def queryContext: QueryExpression.Context
   def featureContext: FeatureContext
   protected def create_Eval_Context(): C = create_Eval_Context(SNil)
   protected def create_Eval_Context(x: SExpr): C = LispContext(
     config,
+    dateTimeContext,
     i18nContext,
     queryContext,
     featureContext,
@@ -317,11 +321,13 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
 object LispEvaluator {
   def apply(
     p: LispConfig,
+    datetimecontext: DateTimeContext,
     i18ncontext: I18NContext,
     querycontext: QueryExpression.Context,
     featurecontext: FeatureContext
   ): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
     val config = p
+    val dateTimeContext = datetimecontext
     val i18nContext = i18ncontext
     val queryContext = querycontext
     val featureContext = featurecontext

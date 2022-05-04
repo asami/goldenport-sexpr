@@ -15,17 +15,20 @@ import org.goldenport.sexpr._
  *  version Oct. 17, 2018
  *  version Feb. 28, 2019
  *  version Mar. 10, 2019
- * @version Feb. 29, 2020
+ *  version Feb. 29, 2020
+ * @version Apr. 24, 2022
  * @author  ASAMI, Tomoharu
  */
 trait EvalContext extends ConfigHelper {
   def config: EvalConfig
   def value: SExpr
   def bindings: IRecord
+  def incident: IncidentSequence
 
-  def toResult(p: EvalContext): EvalContext = toResult(p.value, p.bindings)
+  def toResult(p: EvalContext): EvalContext = toResult(p.value, p.bindings, p.incident)
   def toResult(expr: SExpr): EvalContext = toResult(expr, Record.empty)
-  def toResult(expr: SExpr, bindings: IRecord): EvalContext
+  def toResult(expr: SExpr, bindings: IRecord): EvalContext = toResult(expr, bindings, IncidentSequence.empty)
+  def toResult(expr: SExpr, bindings: IRecord, i: IncidentSequence): EvalContext
 
   def addBindings(bindings: IRecord): EvalContext
 
@@ -36,7 +39,7 @@ trait EvalContext extends ConfigHelper {
   def resolve: EvalContext = {
     // println(s"EvalContext#resolve $value")
     value match {
-      case m: SControl => toResult(m.resolve)
+      case m: SControl => toResult(m.resolveContext)
       case _ => this
     }
   }

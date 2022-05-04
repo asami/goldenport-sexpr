@@ -26,7 +26,8 @@ import Parameters.Cursor
  *  version Mar. 30, 2020
  *  version Apr. 12, 2021
  *  version Jun. 13, 2021
- * @version Sep. 19, 2021
+ *  version Sep. 19, 2021
+ * @version Apr.  9, 2022
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -34,6 +35,14 @@ trait ParameterPart { self: LispContext =>
 
   object param {
     def cursor(spec: FunctionSpecification) = Cursor(feature, spec, spec.resolve(parameters))
+
+    def cursor(spec: FunctionSpecification, params: Parameters) = Cursor(feature, spec, params)
+
+    def error(p: SError) = State[Cursor, ValidationNel[SError, SExpr]](_.error(p))
+
+    def lift[T](p: T) = State[Cursor, ValidationNel[SError, T]](_.lift(p))
+
+    def argument = State[Cursor, ValidationNel[SError, SExpr]](_.argument)
 
     def arguments = State[Cursor, ValidationNel[SError, List[SExpr]]](_.arguments)
 

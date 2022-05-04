@@ -95,7 +95,8 @@ import org.goldenport.sexpr.script.Script
  *  version Oct. 31, 2021
  *  version Nov. 21, 2021
  *  version Feb. 25, 2022
- * @version Mar. 27, 2022
+ *  version Mar. 27, 2022
+ * @version Apr. 24, 2022
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -1927,6 +1928,8 @@ object SExpr {
     case m: IRecord => SRecord(m)
     case m: ITable => STable(m)
     case m: IMatrix[_] => SMatrix(m.asInstanceOf[IMatrix[Double]]) // XXX
+    case Some(s) => create(s)
+    case None => SNil
     case m: org.w3c.dom.Node => SXml(m)
     // case m: org.w3c.dom.NodeList => m.getLength match {
     //   case 0 => SNil
