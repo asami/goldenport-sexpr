@@ -26,7 +26,8 @@ import org.goldenport.sexpr._
  *  version Jan. 24, 2021
  *  version Feb. 20, 2021
  *  version Apr. 21, 2021
- * @version Jun. 18, 2021
+ *  version Jun. 18, 2021
+ * @version May.  8, 2022
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -135,6 +136,8 @@ object Script {
   }
 
   trait ScriptParseState extends LogicalTokenReaderWriterState[Config, Script] with Loggable {
+    def sexprs: Vector[SExpr]
+
     def apply(config: Config, token: LogicalToken): Transition = {
       log_trace(s"SCRIPT PARSER IN ($this): $token")
       val r = handle_event(config, token)
@@ -147,6 +150,7 @@ object Script {
         case EndToken => handle_End(config)
         case m: AtomToken => handle_Atom(config, m)
         case m: ExpressionToken => handle_Expression(config, m)
+        case m: PathToken => handle_Path(config, m)
         case m: DelimiterToken => handle_Delimiter(config, m)
         case m: SpaceToken => handle_Space(config, m)
         case m: SingleQuoteToken => handle_Single_Quote(config, m)
@@ -197,11 +201,19 @@ object Script {
 
     protected def expression_to_sexpr(t: ExpressionToken): SExpr = SExpression(t.text)
 
+    protected def path_to_sexpr(t: PathToken): SExpr = SXPath(t.path)
+
     protected def handle_Expression(config: Config, t: ExpressionToken): Transition =
       (ParseMessageSequence.empty, ParseResult.empty, expression_State(config, t))
 
     protected def expression_State(config: Config, t: ExpressionToken): ScriptParseState =
       ExpressionCandidateState(this, Vector(expression_to_sexpr(t)))
+
+    protected def handle_Path(config: Config, t: PathToken): Transition =
+      (ParseMessageSequence.empty, ParseResult.empty, path_State(config, t))
+
+    protected def path_State(config: Config, t: PathToken): ScriptParseState =
+      PathState(this, Vector(path_to_sexpr(t)))
 
     protected def handle_Delimiter(config: Config, t: DelimiterToken): Transition = 
       (ParseMessageSequence.empty, ParseResult.empty, delimiter_State(config, t))
@@ -263,7 +275,15 @@ object Script {
         case m: UrlToken => add_Sexpr(config, SUrl(m.url))
         case m: UriToken => add_Sexpr(config, SUri(m.uri))
         case m: UrnToken => add_Sexpr(config, SUrn(m.urn))
-        case m: PathToken => add_Sexpr(config, SXPath(m.path))
+        case m: PathToken => sexprs.lastOption match {
+          case Some(s) => s match {
+            case mm: SXPath =>
+              val xs = sexprs.init :+ mm.addPath(m.path)
+              set_Sexpr(config, xs)
+            case _ => add_Sexpr(config, SXPath(m.path))
+          }
+          case None => add_Sexpr(config, SXPath(m.path))
+        }
         case m: ExpressionToken => add_Sexpr(config, SExpression(m.text))
         case m: ExplicitLiteralToken => RAISE.notImplementedYetDefect
         case m: ScriptToken => add_Sexpr(config, SScript.create(m))
@@ -349,6 +369,8 @@ object Script {
         case xs => RAISE.noReachDefect(getClass.getSimpleName)
       }
 
+    protected def set_Sexpr(config: Config, ps: Seq[SExpr]): ScriptParseState = RAISE.noReachDefect(getClass.getSimpleName)
+
     protected final def empty_transition(state: ScriptParseState): Transition =
       (ParseMessageSequence.empty, ParseResult.empty, state)
   }
@@ -394,6 +416,8 @@ object Script {
 
     override def add_Sexpr(config: Config, ps: Vector[SExpr]) = ScriptState(sexprs ++ ps)
 
+    override def set_Sexpr(config: Config, ps: Seq[SExpr]) = ScriptState(ps.toVector)
+
     override protected def handle_End(config: Config): Transition = {
       val r = sexprs.toList match {
         case Nil => SNil
@@ -432,6 +456,8 @@ object Script {
     parent: ScriptParseState,
     car: SExpr
   ) extends ScriptParseState {
+    def sexprs  = Vector(car)
+
     override def add_Sexpr(config: Config, p: SExpr) = EndAssociationState(parent, car, p)
 
     protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
@@ -449,6 +475,8 @@ object Script {
     car: SExpr,
     cdr: SExpr
   ) extends ScriptParseState {
+    def sexprs = Vector(car, cdr)
+
     protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
       t.s match {
         case ")" => parent.addChildState(config, SCell(car, cdr))
@@ -462,6 +490,8 @@ object Script {
   case class QuoteState(
     parent: ScriptParseState
   ) extends ScriptParseState {
+    def sexprs = Vector.empty
+
     override def add_Sexpr(config: Config, p: SExpr) =
       parent.addChildState(config, SList(SAtom.quote, p))
 
@@ -488,18 +518,6 @@ object Script {
         }
         case _ => parent.addChildTransition(config, sexprs, token)
       }
-
-    // override protected def handle_End(config: Config): Transition =
-    //   parent.addChildTransition(config, sexprs, EndToken)
-
-    // protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
-    //   t.s match {
-    //     case "(" => ExpressionState(parent, sexprs, Vector(t))
-    //     case s => parent.addChildState(config, sexprs, t)
-    //   }
-
-    // protected def space_State(config: Config, t: SpaceToken): ScriptParseState =
-    //   parent.addChildState(config, sexprs, t)
 
     protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
       RAISE.noReachDefect
@@ -534,6 +552,62 @@ object Script {
     private def _expression(): SExpression = SExpression(_text)
 
     private def _expression(p: LogicalToken): SExpression = SExpression(_text + p.raw)
+
+    protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
+      RAISE.noReachDefect
+    
+    protected def space_State(config: Config, t: SpaceToken): ScriptParseState =
+      RAISE.noReachDefect
+  }
+
+  // case class PathCandidateState(
+  //   parent: ScriptParseState,
+  //   sexprs: Vector[SExpr]
+  // ) extends ScriptParseState {
+  //   override protected def handle_event(config: Config, token: LogicalToken): Transition =
+  //     token match {
+  //       case EndToken => parent.addChildTransition(config, sexprs, EndToken)
+  //       case m: DelimiterToken => m.s match {
+  //         case "(" => empty_transition(PathState(parent, sexprs, Vector(token)))
+  //         case _ => parent.addChildTransition(config, sexprs, token)
+  //       }
+  //       case _ => parent.addChildTransition(config, sexprs, token)
+  //     }
+
+  //   protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
+  //     RAISE.noReachDefect
+    
+  //   protected def space_State(config: Config, t: SpaceToken): ScriptParseState =
+  //     RAISE.noReachDefect
+  // }
+
+  case class PathState(
+    parent: ScriptParseState,
+    sexprs: Vector[SExpr],
+    tokens: Vector[LogicalToken] = Vector.empty,
+    count: Int = 1
+  ) extends ScriptParseState {
+    override protected def handle_event(config: Config, token: LogicalToken): Transition =
+      token match {
+        case EndToken => parent.addChildTransition(config, Vector(_path()), EndToken)
+        case m: PathToken => empty_transition(copy(tokens = tokens :+ m))
+        case m: DelimiterToken => m.s match {
+          case "(" => empty_transition(copy(tokens = tokens :+ token, count = count + 1))
+          case ")" =>
+            if (count <= 1)
+              parent.addChildTransition(config, Vector(_path()), token)
+            else
+              empty_transition(copy(tokens = tokens :+ token, count = count - 1))
+          case _ => empty_transition(copy(tokens = tokens :+ token))
+        }
+        case _ => empty_transition(copy(tokens = tokens :+ token))
+      }
+
+    private def _text = sexprs.map(_.asString).mkString ++ tokens.map(_.raw).mkString
+
+    private def _path(): SXPath = SXPath(_text)
+
+    private def _path(p: LogicalToken): SXPath = SXPath(_text + p.raw)
 
     protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
       RAISE.noReachDefect

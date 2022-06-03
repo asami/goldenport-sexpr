@@ -64,7 +64,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Dec. 20, 2021
  *  version Feb.  9, 2022
  *  version Mar. 27, 2022
- * @version Apr. 16, 2022
+ *  version Apr. 16, 2022
+ * @version May.  6, 2022
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -258,9 +259,9 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
       val r = response_result(req, res)
       if (res.isSuccess)
         u.toResult(r, i)
-      else if (res.isNotFound)
-        u.toResult(SError.functionNotFound(functionname)).
-          withUnavailableFunction(functionname)
+      // else if (res.isNotFound)
+      //   u.toResult(SError.functionNotFound(functionname)).
+      //     withUnavailableFunction(functionname)
       else
         u.toResult(SError(i), i)
       //u.toResult(http_call(u, req))
@@ -1120,6 +1121,9 @@ object LispFunction {
       p: org.w3c.dom.Node
     ): Option[SExpr] = {
       val engine = XPathFactory.newInstance().newXPath()
+      // val s = DomUtils.toPrettyText(p)
+      // val d = DomUtils.parseXml(s)
+      // println(DomUtils.toPrettyText(p))
       val r = Option(engine.compile(xpath.path).evaluate(p, rtype.xpath))
       val x0 = rtype.xpath match {
         case XPathConstants.BOOLEAN => r
@@ -1148,6 +1152,8 @@ object LispFunction {
                 } else {
                   xs.map(_.getTextContent)
                 }
+              else if (xs.length == 1)
+                xs(0)
               else
                 m
             case _ => a
@@ -1187,7 +1193,7 @@ object LispFunction {
     //     _traverse_dom_xpath_string(xpath, p.dom)
 
     private def _traverse_html(rtype: ReturnType, xpath: SXPath, p: SHtml) =
-      _traverse_dom_xpath(rtype, xpath, p.dom)
+      _traverse_dom_xpath(rtype, xpath, p.domForXpath)
 
     private def _traverse_json(rtype: ReturnType, xpath: SXPath, p: SJson): Option[SExpr] = {
       val pc = JXPathContext.newContext(p.json)

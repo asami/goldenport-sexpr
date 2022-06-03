@@ -96,7 +96,8 @@ import org.goldenport.sexpr.script.Script
  *  version Nov. 21, 2021
  *  version Feb. 25, 2022
  *  version Mar. 27, 2022
- * @version Apr. 24, 2022
+ *  version Apr. 24, 2022
+ * @version May.  8, 2022
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -1112,9 +1113,9 @@ case class SUrl(url: java.net.URL) extends SExpr {
   def getSuffix: Option[String] = Option(url.getFile).flatMap(StringUtils.getSuffix)
 
   def isXmlFamily = isXml || isHtml || isXsl
-  def isXml = getSuffix.map(_ == SXml.suffix) getOrElse false
-  def isHtml = getSuffix.map(_ == SHtml.suffix) getOrElse false
-  def isXsl = getSuffix.map(_ == SXsl.suffix) getOrElse false
+  def isXml = getSuffix.map(_.equalsIgnoreCase(SXml.suffix)) getOrElse false
+  def isHtml = getSuffix.map(x => SHtml.suffixCandidates.exists(_.equalsIgnoreCase(SHtml.suffix))) getOrElse false
+  def isXsl = getSuffix.map(_.equalsIgnoreCase(SXsl.suffix)) getOrElse false
 }
 object SUrl {
   def apply(p: String): SUrl = SUrl(new URL(p))
@@ -1318,9 +1319,17 @@ case class SHtml(dom: org.w3c.dom.Node) extends SExpr with IDom {
   override def asString = text
   override protected def print_String = text
   // def show = html
+
+  lazy val domForXpath: org.w3c.dom.Node = {
+    val s = DomUtils.toText(dom)
+    DomUtils.parseXml(s)
+  }
 }
 object SHtml {
   val suffix = "html"
+  val suffixCandidates = List(suffix, "htm")
+
+//  def apply(p: String): SHtml = SHtml(DomUtils.parseHtmlLowerCase(p)) // FUTURE : case sensitive
 
   def apply(p: String): SHtml = SHtml(DomUtils.parseHtmlLowerCase(p)) // FUTURE : case sensitive
 
@@ -1345,6 +1354,8 @@ case class SXPath(path: String) extends SExpr {
   override def asString = path
   // def print = path
   // def show = s"XPath($path)"
+
+  def addPath(p: String) = copy(path + p)
 }
 
 sealed trait SXsl extends SExpr with IDom {

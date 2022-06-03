@@ -37,7 +37,8 @@ import org.goldenport.value._
  *  version May. 20, 2021
  *  version Jun. 13, 2021
  *  version Sep. 21, 2021
- * @version Apr.  4, 2022
+ *  version Apr.  4, 2022
+ * @version May.  5, 2022
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -220,6 +221,11 @@ case class Parameters(
     copy(argumentVector = as)
   }
 
+  def restore: List[SExpr] = switches.toList.map(_to_switch) ::: properties.toList.flatMap(_to_property) ::: arguments
+
+  private def _to_switch(p: Symbol): SExpr = SKeyword(p.name)
+
+  private def _to_property(p: (Symbol, SExpr)): List[SExpr] = List(SKeyword(p._1.name), p._2)
   // private def _parameters_using_arguments(
   //   paramnames: List[String],
   //   args: VectorMap[Symbol, Parameters.Argument]
