@@ -14,7 +14,7 @@ import org.goldenport.exception.RAISE
 import org.goldenport.i18n.I18NMessage
 import org.goldenport.context.Effect
 import org.goldenport.context.Consequence
-import org.goldenport.record.v2.{XInt}
+import org.goldenport.record.v2.{XInt, XDecimal}
 import org.goldenport.record.v3.{Record, ITable}
 import org.goldenport.record.v3.Table.CreateHtmlStrategy
 import org.goldenport.record.unitofwork._
@@ -65,7 +65,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Feb.  9, 2022
  *  version Mar. 27, 2022
  *  version Apr. 16, 2022
- * @version May.  6, 2022
+ *  version May.  6, 2022
+ * @version Aug. 31, 2022
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -435,7 +436,7 @@ trait CursorEvalFunction extends EvalFunction {
   def eval(u: LispContext): CursorResult
 
   protected final def param_argument(name: String): FunctionSpecification.Parameter =
-    FunctionSpecification.Parameter(name, true)
+    FunctionSpecification.Parameter.argument(name)
 
   protected final def param_argument_option(name: String): FunctionSpecification.Parameter =
     FunctionSpecification.Parameter.argumentOption(name)
@@ -795,7 +796,7 @@ object LispFunction {
   }
 
   case object Plus extends ParameterEvalFunction {
-    val specification = FunctionSpecification("+", 2)
+    val specification = FunctionSpecification.variableArityArgument("+", 2, XDecimal)
 
     def eval(p: Parameters) = _go(p.arguments.head, p.arguments.tail)
     //   SNumber(p.asBigDecimalList.sum)

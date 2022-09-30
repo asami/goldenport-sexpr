@@ -3,15 +3,20 @@ package org.goldenport.sexpr.eval
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
 import org.goldenport.RAISE
+import org.goldenport.context.Consequence
+import org.goldenport.context.ConsequenceSequence
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.collection.VectorMap
 import org.goldenport.record.v2.{Schema}
+import org.goldenport.record.v2.{XDecimal}
 import org.goldenport.record.v3.{IRecord, Record, RecordSequence, Table}
 import org.goldenport.record.v3.Field
+import org.goldenport.record.v3.Column
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.record.query.QueryExpression
 import org.goldenport.sexpr._
+import org.goldenport.sexpr.eval.FunctionSpecification.Parameter.{Argument => ArgumentSpec}
 import org.goldenport.sexpr.eval.entity.{EntityCollection, EntityId, EntityClass}
 // import org.goldenport.sexpr.SExprConverter._
 import org.goldenport.value._
@@ -38,12 +43,14 @@ import org.goldenport.value._
  *  version Jun. 13, 2021
  *  version Sep. 21, 2021
  *  version Apr.  4, 2022
- * @version May.  5, 2022
+ *  version May.  5, 2022
+ *  version Aug. 31, 2022
+ * @version Sep.  1, 2022
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
   argumentVector: Vector[Parameters.Argument],
-  properties: Map[Symbol, SExpr],
+  properties: VectorMap[Symbol, SExpr],
   switches: Set[Symbol]
 ) {
   def show = "Paramerters()" // TODO
@@ -101,10 +108,12 @@ case class Parameters(
     spec: FunctionSpecification
   )(implicit a: SExprConverter[A]): Option[A] = getArgumentOneBased(1).map(a.apply)
 
+  // Unify with FunctionSpecification#resolve
+  // from ServiceMoel#ScriptFunction#_eval
   def argumentsUsingProperties(ps: Seq[String]): List[SExpr] =
     argumentVectorUsingProperties(ps).map(_.value).toList
 
-  def argumentVectorUsingProperties(ps: Seq[String]): Vector[Parameters.Argument] = {
+  private def argumentVectorUsingProperties(ps: Seq[String]): Vector[Parameters.Argument] = {
     case class Z(
       args: List[SExpr] = arguments,
       results: Vector[Parameters.Argument] = Vector.empty
@@ -213,13 +222,138 @@ case class Parameters(
 
   def pop(count: Int): Parameters = copy(argumentVector = argumentVector.take(count))
 
-  def resolve(p: FunctionSpecification): Parameters = {
-    val paramnames = p.parameters.argumentNames
-    val as = argumentVectorUsingProperties(paramnames)
+  def resolve(p: FunctionSpecification): Consequence[Parameters] = {
+    // val paramnames = p.parameters.argumentNames
     // val ps = _parameters_using_arguments(paramnames, as)
     // copy(argumentMap = as, properties = ps)
-    copy(argumentVector = as)
+    // val as = argumentVectorUsingProperties(paramnames)
+    // copy(argumentVector = as)
+    _resolve_arguments(p)
   }
+
+  private def _resolve_arguments(p: FunctionSpecification): Consequence[Parameters] = {
+    case class Z(
+      in: Vector[Parameters.Argument] = argumentVector,
+      out: ConsequenceSequence[Parameters.Argument] = ConsequenceSequence.empty
+    ) {
+      def r: Consequence[Parameters] = {
+        val a = p.signature.parameters.variableArityArgument match {
+          case Some(s) => (out + in.map(_resolve(s, _)))
+          case None =>
+            if (in.isEmpty)
+              out
+            else
+              out + Consequence.tooManyArgumentsFault(in.map(_.value))
+        }
+        for {
+          as <- a.toConsequence
+          ps = properties // TODO argument
+        } yield Parameters(as, ps, switches)
+      }
+
+      def +(rhs: ArgumentSpec) = in.headOption match {
+        case Some(s) => copy(in = in.tail, out = out + _resolve(rhs, s))
+        case None => this
+      }
+    }
+    p.signature.parameters.arguments./:(Z())(_+_).r
+  }
+
+  private def _resolve(c: ArgumentSpec, p: Parameters.Argument): Consequence[Parameters.Argument] =
+    _resolve(c.metadata, p)
+
+  private def _resolve(c: Column, p: Parameters.Argument): Consequence[Parameters.Argument] =
+    _resolve(c, p.value).map(p.set)
+
+  private def _resolve(c: Column, p: SExpr): Consequence[SExpr] = c.domain.datatype match {
+    case XDecimal => _resolve_decimal(c, p)
+    case _ => Consequence.success(p)
+  }
+
+  private def _resolve_decimal(c: Column, p: SExpr): Consequence[SNumber] = p match {
+    case m: SNumber => Consequence.success(m)
+    case m: SString => Consequence(SNumber(m.string))
+    case m => Consequence.valueDomainFault("Unavailable number", m.show)
+  }
+
+  // private def _convert_decimal(c: Column, p: SExpr) = p match {
+  //   case m: SAtom => m
+  //   case m: SKeyword => m
+  //   case m: SNumber => m
+  //   case m: SRational => m
+  //   case m: SComplex => m
+  //   case m: SBoolean => m
+  //   case m: SRange => m
+  //   case m: SInterval => m
+  //   case m: SString => m
+  //   case m: SList => m
+  //   case m: SLambda => m
+  //   case m: SError => m
+  //   case m: SException => m
+  //   case m: SLongJump => m
+  //   case m: SMetaCommand => m
+  //   case m: SConsoleOutput => m
+  //   case m: SConsequence => m
+  //   case m: SBinary => m
+  //   case m: SI18NString => m
+  //   case m: SI18NTemplate => m
+  //   case m: SMessage => m
+  //   case m: SRegex => m
+  //   case m: SClob => m
+  //   case m: SBlob => m
+  //   case m: SDocument => m
+  //   case m: SSlip => m
+  //   case m: SVoucher => m
+  //   case m: SEntity => m
+  //   case m: SSchema => m
+  //   case m: SQuery => m
+  //   case m: SRecord => m
+  //   case m: STable => m
+  //   case m: SVector => m
+  //   case m: SMatrix => m
+  //   case m: SDataFrame => m
+  //   case m: SLxsv => m
+  //   case m: SUrl => m
+  //   case m: SUrn => m
+  //   case m: SUri => m
+  //   case m: SExpression => m
+  //   case m: SScript => m
+  //   case m: SProcess => m
+  //   case m: SWindow => m
+  //   case m: SSingleQuote => m
+  //   case m: SBean => m
+  //   case m: SXml => m
+  //   case m: SHtml => m
+  //   case m: SXPath => m
+  //   case m: SXsl => m
+  //   case m: SPug => m
+  //   case m: SJson => m
+  //   case m: SHocon => m
+  //   case m: SDateTime => m
+  //   case m: SLocalDateTime => m
+  //   case m: SLocalDate => m
+  //   case m: SLocalTime => m
+  //   case m: SMonthDay => m
+  //   case m: SDateTimeInterval => m
+  //   case m: SLocalDateTimeInterval => m
+  //   case m: SDuration => m
+  //   case m: SPeriod => m
+  //   case m: SImage => m
+  //   case m: SMoney => m
+  //   case m: SPercent => m
+  //   case m: SUnit => m
+  //   case m: SChart => m
+  //   case m: SChartSpace => m
+  //   case m: SChartSeries => m
+  //   case m: SMute => m
+  //   case m: SFuture => m
+  //   case m: SLazy => m
+  //   case m: SLazyFuture => m
+  //   case SOpen => p
+  //   case SClose => p
+  //   case SSpace => p
+  //   case SDelimiter => p
+  // }
 
   def restore: List[SExpr] = switches.toList.map(_to_switch) ::: properties.toList.flatMap(_to_property) ::: arguments
 
@@ -253,12 +387,15 @@ object Parameters {
   sealed trait Argument {
     def value: SExpr
     def map(f: SExpr => SExpr): Argument
+    def set(v: SExpr): Argument
   }
   case class NamedArgument(key: Symbol, value: SExpr) extends Argument {
     def map(f: SExpr => SExpr) = copy(value = f(value))
+    def set(v: SExpr): NamedArgument = copy(value = v)
   }
   case class AnonArgument(value: SExpr) extends Argument {
     def map(f: SExpr => SExpr) = copy(value = f(value))
+    def set(v: SExpr): AnonArgument = copy(value = v)
   }
   object Argument {
     def apply(value: SExpr): Argument = AnonArgument(value)
@@ -270,12 +407,12 @@ object Parameters {
   def apply(ps: List[SExpr]): Parameters = {
     case class Z(
       args: Vector[SExpr] = Vector.empty,
-      props: Map[Symbol, Vector[SExpr]] = Map.empty,
+      props: VectorMap[Symbol, Vector[SExpr]] = VectorMap.empty,
       switches: Set[Symbol] = Set.empty,
       keyword: Option[Symbol] = None
     ) {
       def r = {
-        val ps: Map[Symbol, SExpr] = props.mapValues(xs => xs.length match {
+        val ps: VectorMap[Symbol, SExpr] = props.mapValues(xs => xs.length match {
           case 0 => SNil
           case 1 => xs(0)
           case _ => SList.create(xs)
@@ -288,7 +425,7 @@ object Parameters {
         rhs match {
           case m: SKeyword => copy(switches = switches + Symbol(m.name), keyword = None)
           case SNil => copy(switches = switches + Symbol(k.name), keyword = None)
-          case m => copy(props = props |+| Map(Symbol(k.name) -> Vector(m)), keyword = None)
+          case m => copy(props = props |+| VectorMap(Symbol(k.name) -> Vector(m)), keyword = None)
         }
       ).getOrElse(
         rhs match {

@@ -15,14 +15,16 @@ import org.goldenport.util.NumberUtils
  *  version Mar. 21, 2021
  *  version Apr. 12, 2021
  *  version Jun. 26, 2021
- * @version Oct. 31, 2021
+ *  version Oct. 31, 2021
+ *  version Aug. 31, 2022
+ * @version Sep.  1, 2022
  * @author  ASAMI, Tomoharu
  */
 case class FunctionSpecification(
   name: String,
-  parameters: FunctionSpecification.Parameters
+  signature: FunctionSpecification.Signature
 ) {
-  def numberOfRequiredArguments: Int = parameters.numberOfRequiredArguments
+  def numberOfRequiredArguments: Int = signature.numberOfRequiredArguments
 
   def label(s: String): String = s"$name($numberOfRequiredArguments): $s"
 
@@ -62,13 +64,13 @@ case class FunctionSpecification(
             }
             val z = xs./:(Z2())(_+_).r
             val x = p.copy(argumentVector = z)
-            x.resolve(FunctionSpecification.this)
+            x.resolve(FunctionSpecification.this).take // TODO
           }
 
           def +(rhs: (Int, SExpr)) = rhs match {
             case (n, x0) =>
-              val index = n - 1
-              val paramname = parameters.makeParameterNameOneBased(index)
+              val index = n // n - 1
+              val paramname = signature.makeParameterNameOneBased(index)
               val x = Parameters.Argument(paramname, x0)
               val b: Vector[Option[Parameters.Argument]] = if (xs.length < index)
                 (xs ++ Vector.fill(index - xs.length)(None)) :+ Some(x)
@@ -99,64 +101,122 @@ case class FunctionSpecification(
 }
 
 object FunctionSpecification {
-  // case class Signature()
+  case class Signature(
+    parameters: Parameters
+  ) {
+    def numberOfRequiredArguments: Int = parameters.numberOfRequiredArguments
+    def makeParameterNameOneBased(p: Int): String = parameters.makeParameterNameOneBased(p)
+  }
 
   case class Parameters(
-    parameters: List[Parameter]
+    arguments: List[Parameter.Argument],
+    variableArityArgument: Option[Parameter.Argument],
+    properties: List[Parameter.Property],
+    switches: List[Parameter.Switch]
   ) {
-    def numberOfRequiredArguments: Int = parameters.count(_.isRequiredArgument)
+    def numberOfRequiredArguments: Int = arguments.count(_.isRequiredArgument)
 
-    def argumentNames: List[String] = parameters.withFilter(_.isArgument).map(_.name)
+    def argumentNames: List[String] = arguments.withFilter(_.isArgument).map(_.name)
 
-    def getParameterNameOneBased(p: Int): Option[String] = parameters.lift(p - 1).map(_.name)
+    def getParameterNameOneBased(p: Int): Option[String] = arguments.lift(p - 1).map(_.name)
 
     def makeParameterNameOneBased(p: Int): String =
       getParameterNameOneBased(p) getOrElse Parameter.argumentNameOneBased(p)
   }
   object Parameters {
     def apply(p: Parameter, ps: Parameter*): Parameters = Parameters((p +: ps).toList)
+
+    def apply(ps: Seq[Parameter]): Parameters = apply(ps, None)
+
+    def apply(ps: Seq[Parameter], vaa: Parameter.Argument): Parameters = apply(ps, Some(vaa))
+
+    def apply(ps: Seq[Parameter], vaa: Option[Parameter.Argument]): Parameters = {
+      val a = ps.collect {
+        case m: Parameter.Argument => m
+      }
+      val b = ps.collect {
+        case m: Parameter.Property => m
+      }
+      val c = ps.collect {
+        case m: Parameter.Switch => m
+      }
+      Parameters(a.toList, vaa, b.toList, c.toList)
+    }
   }
 
-  case class Parameter(
-    metadata: Column,
-    isArgument: Boolean
-  ) extends Column.Holder {
+  sealed trait Parameter extends Column.Holder {
+    def metadata: Column
+    def isArgument: Boolean
     def isRequired = metadata.isRequired
     def isRequiredArgument = isArgument && isRequired
     def column = metadata
   }
   object Parameter {
+    case class Argument(
+      metadata: Column
+    ) extends Parameter {
+      val isArgument: Boolean = true
+    }
+    object Argument {
+      def apply(name: String, datatype: DataType): Argument = Argument(Column(name, datatype))
+    }
+
+    case class Property(
+      metadata: Column
+    ) extends Parameter {
+      val isArgument: Boolean = false
+    }
+
+    case class Switch(
+      metadata: Column
+    ) extends Parameter {
+      val isArgument: Boolean = false
+    }
+
     val ARGUMENT_PREFIX = "arg"
+    val VARIABLE_ARITY_ARGUMENT_NAME = "argN"
 
-    def apply(i: Int, isargument: Boolean): Parameter =
-      apply(argumentNameOneBased(i), isargument)
+    def argument(i: Int): Parameter = argument(argumentNameOneBased(i))
 
-    def apply(name: String, isargument: Boolean): Parameter =
-      Parameter(Column(name, XObject), isargument)
+    def argument(i: Int, datatype: DataType): Parameter = argument(argumentNameOneBased(i), datatype)
+
+    def argument(name: String): Parameter = argument(name, XObject)
+
+    def argument(name: String, datatype: DataType): Parameter = Parameter.Argument(Column(name, datatype))
 
     def argumentNameZeroBased(p: Int) = argumentNameOneBased(p + 1)
     def argumentNameOneBased(p: Int) = s"$ARGUMENT_PREFIX$p"
 
     def argumentOption(name: String): Parameter =
-      Parameter(Column(name, XObject, MZeroOne), true)
+      Parameter.Argument(Column(name, XObject, MZeroOne))
 
     def argumentOption(name: String, dt: DataType): Parameter =
-      Parameter(Column(name, dt, MZeroOne), true)
+      Parameter.Argument(Column(name, dt, MZeroOne))
 
     def propertyOption(name: String): Parameter =
-      Parameter(Column(name, XObject, MZeroOne), false)
+      Parameter.Property(Column(name, XObject, MZeroOne))
 
     def propertyOption(name: String, dt: DataType): Parameter =
-      Parameter(Column(name, dt, MZeroOne), false)
+      Parameter.Property(Column(name, dt, MZeroOne))
   }
+
+  def apply(name: String, p: Parameter, ps: Parameter*): FunctionSpecification =
+    FunctionSpecification(name,Signature(Parameters(p, ps: _*)))
 
   def apply(name: String): FunctionSpecification = apply(name, 0)
 
   def apply(name: String, numberofmeaningfulparameters: Int): FunctionSpecification = {
-    val a = (1 to numberofmeaningfulparameters).map(Parameter(_, true))
-    FunctionSpecification(name, Parameters(a.toList))
+    val a = (1 to numberofmeaningfulparameters).map(Parameter.argument)
+    FunctionSpecification(name, Signature(Parameters(a.toList)))
   }
 
-  def apply(name: String, p: Parameter, ps: Parameter*): FunctionSpecification =
-    FunctionSpecification(name, Parameters(p, ps: _*))
+  def variableArityArgument(
+    name: String,
+    numberofmeaningfulparameters: Int,
+    datatype: DataType
+  ): FunctionSpecification = {
+    val a = (1 to numberofmeaningfulparameters).map(Parameter.argument(_, datatype))
+    val b = Parameter.Argument(Parameter.VARIABLE_ARITY_ARGUMENT_NAME, datatype)
+    FunctionSpecification(name, Signature(Parameters(a.toList, b)))
+  }
 }

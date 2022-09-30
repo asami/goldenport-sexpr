@@ -97,7 +97,8 @@ import org.goldenport.sexpr.script.Script
  *  version Feb. 25, 2022
  *  version Mar. 27, 2022
  *  version Apr. 24, 2022
- * @version May.  8, 2022
+ *  version May.  8, 2022
+ * @version Aug. 31, 2022
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -336,23 +337,23 @@ object SNumber {
   val ZERO = SNumber(BigDecimal(0))
   val ONE = SNumber(BigDecimal(1))
 
-  def apply(p: String): SExpr = SNumber(BigDecimal(p))
+  def apply(p: String): SNumber = SNumber(BigDecimal(p))
   def apply(p: Int): SExpr = p match {
     case 0 => ZERO
     case 1 => ONE
     case _ => SNumber(BigDecimal(p))
   }
-  def apply(p: Long): SExpr = p match {
+  def apply(p: Long): SNumber = p match {
     case 0 => ZERO
     case 1 => ONE
     case _ => SNumber(BigDecimal(p))
   }
-  def apply(p: Float): SExpr = p match {
+  def apply(p: Float): SNumber = p match {
     case 0 => ZERO
     case 1 => ONE
     case _ => SNumber(BigDecimal(p))
   }
-  def apply(p: Double): SExpr = p match {
+  def apply(p: Double): SNumber = p match {
     case 0 => ZERO
     case 1 => ONE
     case _ => SNumber(BigDecimal(p))
