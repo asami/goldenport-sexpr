@@ -45,7 +45,8 @@ import org.goldenport.value._
  *  version Apr.  4, 2022
  *  version May.  5, 2022
  *  version Aug. 31, 2022
- * @version Sep.  1, 2022
+ *  version Sep.  1, 2022
+ * @version Nov.  6, 2022
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -222,7 +223,7 @@ case class Parameters(
 
   def pop(count: Int): Parameters = copy(argumentVector = argumentVector.take(count))
 
-  def resolve(p: FunctionSpecification): Consequence[Parameters] = {
+  def resolve(p: FunctionSpecification): Parameters = {
     // val paramnames = p.parameters.argumentNames
     // val ps = _parameters_using_arguments(paramnames, as)
     // copy(argumentMap = as, properties = ps)
@@ -231,12 +232,12 @@ case class Parameters(
     _resolve_arguments(p)
   }
 
-  private def _resolve_arguments(p: FunctionSpecification): Consequence[Parameters] = {
+  private def _resolve_arguments(p: FunctionSpecification): Parameters = {
     case class Z(
       in: Vector[Parameters.Argument] = argumentVector,
       out: ConsequenceSequence[Parameters.Argument] = ConsequenceSequence.empty
     ) {
-      def r: Consequence[Parameters] = {
+      def r: Parameters = {
         val a = p.signature.parameters.variableArityArgument match {
           case Some(s) => (out + in.map(_resolve(s, _)))
           case None =>
@@ -245,10 +246,16 @@ case class Parameters(
             else
               out + Consequence.tooManyArgumentsFault(in.map(_.value))
         }
-        for {
-          as <- a.toConsequence
-          ps = properties // TODO argument
-        } yield Parameters(as, ps, switches)
+        // for {
+        //   as <- a.toConsequence
+        //   ps = properties // TODO argument
+        // } yield Parameters(as, ps, switches)
+        val as: Vector[Parameters.Argument] = a.consequences.map {
+          case Consequence.Success(s, _) => s
+          case Consequence.Error(c) => Parameters.AnonArgument(SError(c))
+        }
+        val ps = properties // TODO argument
+        Parameters(as, ps, switches)
       }
 
       def +(rhs: ArgumentSpec) = in.headOption match {

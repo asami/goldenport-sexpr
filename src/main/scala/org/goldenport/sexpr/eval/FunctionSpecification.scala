@@ -17,7 +17,8 @@ import org.goldenport.util.NumberUtils
  *  version Jun. 26, 2021
  *  version Oct. 31, 2021
  *  version Aug. 31, 2022
- * @version Sep.  1, 2022
+ *  version Sep.  1, 2022
+ * @version Nov.  6, 2022
  * @author  ASAMI, Tomoharu
  */
 case class FunctionSpecification(
@@ -64,7 +65,7 @@ case class FunctionSpecification(
             }
             val z = xs./:(Z2())(_+_).r
             val x = p.copy(argumentVector = z)
-            x.resolve(FunctionSpecification.this).take // TODO
+            x.resolve(FunctionSpecification.this)
           }
 
           def +(rhs: (Int, SExpr)) = rhs match {
