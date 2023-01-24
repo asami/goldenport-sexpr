@@ -1,6 +1,7 @@
 package org.goldenport.sexpr.eval
 
 import java.net.URL
+import java.sql.Timestamp
 import org.goldenport.value._
 import org.goldenport.context.Consequence
 import org.goldenport.cli.ShellCommand
@@ -17,7 +18,8 @@ import Incident._
  * @since   Apr. 12, 2019
  *  version Jun. 24, 2019
  *  version Jun. 17, 2021
- * @version Apr. 16, 2022
+ *  version Apr. 16, 2022
+ * @version Jan. 22, 2023
  * @author  ASAMI, Tomoharu
  */
 trait Incident extends ApplicationIncident {
@@ -206,6 +208,13 @@ object XPathIncident {
     xpath: SXPath,
     target: SExpr
   ): XPathIncident = XPathIncident(start, end, xpath, target, Consequence.notFound(xpath.show))
+
+  def notFound(
+    start: Timestamp,
+    end: Timestamp,
+    xpath: SXPath,
+    target: SExpr
+  ): XPathIncident = notFound(start.getTime, end.getTime, xpath, target)
 }
 
 case class InvariantIncident(
