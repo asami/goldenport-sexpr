@@ -51,6 +51,7 @@ import org.goldenport.util.SpireUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
 import org.goldenport.sexpr.eval.{InvariantIncident, PreConditionIncident, PreConditionStateIncident, PostConditionIncident}
 import org.goldenport.sexpr.eval.entity.Entity
+import org.goldenport.sexpr.eval.entity.EntityId
 import org.goldenport.sexpr.eval.spark.SparkDataFrame
 import org.goldenport.sexpr.script.Script
 // import org.goldenport.sexpr.eval.chart.Chart
@@ -98,7 +99,9 @@ import org.goldenport.sexpr.script.Script
  *  version Mar. 27, 2022
  *  version Apr. 24, 2022
  *  version May.  8, 2022
- * @version Aug. 31, 2022
+ *  version Aug. 31, 2022
+ *  version Feb. 28, 2023
+ * @version Apr. 22, 2023
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -441,6 +444,8 @@ sealed trait SList extends SExpr {
 object SList {
   def apply(xs: SExpr*): SList = create(xs)
 
+  def quote(p: SExpr): SList = SList(SAtom.quote, p)
+
   def create(xs: Seq[SExpr]): SList =
     xs.foldRight(SNil: SList) { (x, z) =>
       SCell(x, z)
@@ -450,6 +455,33 @@ object SList {
     xs.foldRight(SNil: SList) { (x, z) =>
       SCell(x, z)
     }
+
+  def createAtomAtomString(s: String, a: String, s2: String): SList =
+    apply(SAtom(s), SAtom(a), SString(s2))
+
+  def createAtomQAtomString(s: String, a: String, s2: String): SList =
+    apply(SAtom(s), quote(SAtom(a)), SString(s2))
+
+  def createAtomAtomRecord(s: String, a: String, rec: IRecord): SList =
+    apply(SAtom(s), SAtom(a), SRecord(rec))
+
+  def createAtomQAtomRecord(s: String, a: String, rec: IRecord): SList =
+    apply(SAtom(s), quote(SAtom(a)), SRecord(rec))
+
+  def createAtomAtomStringRecord(s: String, a: String, s2: String, rec: IRecord): SList =
+    apply(SAtom(s), SAtom(a), SString(s2), SRecord(rec))
+
+  def createAtomQAtomStringRecord(s: String, a: String, s2: String, rec: IRecord): SList =
+    apply(SAtom(s), quote(SAtom(a)), SString(s2), SRecord(rec))
+
+  def createStringAtomString(s: String, a: String, s2: String): SList =
+    apply(SString(s), SAtom(a), SString(s2))
+
+  def createStringAtomRecord(s: String, a: String, rec: IRecord): SList =
+    apply(SString(s), SAtom(a), SRecord(rec))
+
+  def createStringAtomStringRecord(s: String, a: String, s2: String, rec: IRecord): SList =
+    apply(SString(s), SAtom(a), SString(s2), SRecord(rec))
 }
 
 case class SCell(car: SExpr, cdr: SExpr) extends SList {
@@ -865,10 +897,11 @@ case class SEntity(entity: Entity) extends SExpr with Mutable {
   override def titleInfo = entity.show
   override protected def show_Content = Some(record.show)
 
+  def entityId: EntityId = entity.id
   def attributes: IRecord = entity.attributes
   def record: IRecord = entity.record
+  def recordWithShortId: IRecord = entity.recordWithShortId
   def table: STable = STable(Table.create(record))
-
 
   def id: SExpr = SExpr.create(entity.id.string)
 }

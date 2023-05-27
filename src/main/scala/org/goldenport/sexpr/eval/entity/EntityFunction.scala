@@ -12,7 +12,8 @@ import org.goldenport.sexpr.eval._
  * @since   Mar. 30, 2019
  *  version Sep. 20, 2021
  *  version Oct.  2, 2021
- * @version Nov. 28, 2021
+ *  version Nov. 28, 2021
+ * @version Apr. 22, 2023
  * @author  ASAMI, Tomoharu
  */
 object EntityFunction {
@@ -83,7 +84,12 @@ object EntityFunction {
   }
 
   case object EntityCreate extends IoFunction {
-    val specification = FunctionSpecification("entity-create", 1)
+    val specification = FunctionSpecification("entity-create", 2)
+
+    override def isDefinedAt(p: LispContext): Boolean = {
+      val r = super.isDefinedAt(p)
+      r
+    }
 
     def apply(p: LispContext): LispContext = {
       val a = for {
@@ -100,7 +106,7 @@ object EntityFunction {
   }
 
   case object EntityUpdate extends IoFunction {
-    val specification = FunctionSpecification("entity-update", 1)
+    val specification = FunctionSpecification("entity-update", 3)
 
     def apply(p: LispContext): LispContext = {
       val a = for {
@@ -118,7 +124,7 @@ object EntityFunction {
   }
 
   case object EntityDelete extends IoFunction {
-    val specification = FunctionSpecification("entity-delete", 1)
+    val specification = FunctionSpecification("entity-delete", 2)
 
     def apply(p: LispContext): LispContext = {
       val a = for {
