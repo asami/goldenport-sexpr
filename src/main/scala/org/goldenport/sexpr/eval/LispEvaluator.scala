@@ -46,7 +46,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version May. 10, 2021
  *  version Sep. 20, 2021
  *  version Nov. 29, 2021
- * @version Apr.  4, 2022
+ *  version Apr.  4, 2022
+ * @version Jul. 17, 2023
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -239,7 +240,7 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   private def _eval_function(c: LispContext, f: LispFunction): LispContext = {
     val a = c.reductForEval
     if (_is_error(a) && !f.isAcceptError)
-      c.toResult(_to_error(a))
+      c.toResult(_to_error(a), c.incident)
     else if (_is_lazy(a.value))
       c.toResult(SLazy(c, f)) // lazy evaluation for SControl(e.g. SFuture) elements.
     else

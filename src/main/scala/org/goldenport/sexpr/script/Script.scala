@@ -27,7 +27,8 @@ import org.goldenport.sexpr._
  *  version Feb. 20, 2021
  *  version Apr. 21, 2021
  *  version Jun. 18, 2021
- * @version May.  8, 2022
+ *  version May.  8, 2022
+ * @version Jul. 24, 2023
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -397,7 +398,7 @@ object Script {
       t.s match {
         case "(" => NormalState(this)
         case ")" => parent.addChildState(config, SList.create(sexprs))
-        case "," => this
+        case "," => CommaListState(this)
         case s => RAISE.syntaxErrorFault(s"Unavailable delimiter '$s'")
       }
 
@@ -409,6 +410,31 @@ object Script {
     override def add_Sexpr(config: Config, ps: Vector[SExpr]) = copy(sexprs = sexprs ++ ps)
   }
   object NormalState {
+  }
+
+  case class CommaListState(
+    parent: ScriptParseState,
+    sexprs: Vector[SExpr] = Vector.empty
+  ) extends ScriptParseState {
+    override protected def handle_End(config: Config): Transition =
+      parent.addChildState(config, SList.create(sexprs)).apply(config, EndToken)
+
+    protected def delimiter_State(config: Config, t: DelimiterToken): ScriptParseState =
+      t.s match {
+        case "(" => NormalState(this)
+        case ")" => RAISE.notImplementedYetDefect // parent.addChildState(config, SList.create(sexprs))
+        case "," => this
+        case s => RAISE.syntaxErrorFault(s"Unavailable delimiter '$s'")
+      }
+
+    protected def space_State(config: Config, t: SpaceToken): ScriptParseState =
+      parent.addChildState(config, SList.create(sexprs)).apply(config, t)._3
+
+    override def add_Sexpr(config: Config, p: SExpr) = copy(sexprs = sexprs :+ p)
+
+    override def add_Sexpr(config: Config, ps: Vector[SExpr]) = copy(sexprs = sexprs ++ ps)
+  }
+  object CommaListState {
   }
 
   case class ScriptState(sexprs: Vector[SExpr]) extends ScriptParseState {
@@ -434,7 +460,10 @@ object Script {
       t.s match {
         case "(" => NormalState(this)
         case ")" => RAISE.syntaxErrorFault("Unavailable delimiter ')'")
-        case "," => this
+        case "," => sexprs.lastOption match {
+          case Some(s) => CommaListState(copy(sexprs = sexprs.init), Vector(s))
+          case None => CommaListState(this)
+        }
         case s => RAISE.syntaxErrorFault(s"Unavailable delimiter '$s'")
       }
 

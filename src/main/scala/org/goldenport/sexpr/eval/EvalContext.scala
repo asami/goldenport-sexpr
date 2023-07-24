@@ -16,7 +16,8 @@ import org.goldenport.sexpr._
  *  version Feb. 28, 2019
  *  version Mar. 10, 2019
  *  version Feb. 29, 2020
- * @version Apr. 24, 2022
+ *  version Apr. 24, 2022
+ * @version Jul. 17, 2023
  * @author  ASAMI, Tomoharu
  */
 trait EvalContext extends ConfigHelper {
@@ -27,6 +28,7 @@ trait EvalContext extends ConfigHelper {
 
   def toResult(p: EvalContext): EvalContext = toResult(p.value, p.bindings, p.incident)
   def toResult(expr: SExpr): EvalContext = toResult(expr, Record.empty)
+  def toResult(expr: SExpr, i: IncidentSequence): EvalContext = toResult(expr, Record.empty, i)
   def toResult(expr: SExpr, bindings: IRecord): EvalContext = toResult(expr, bindings, IncidentSequence.empty)
   def toResult(expr: SExpr, bindings: IRecord, i: IncidentSequence): EvalContext
 

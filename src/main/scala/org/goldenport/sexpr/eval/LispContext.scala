@@ -29,6 +29,7 @@ import org.goldenport.matrix.INumericalOperations
 import org.goldenport.statemachine.{ExecutionContext => StateMachineContext}
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.entity.EntityFactory
+import LispContext.ResultWithIncident
 
 /*
  * @since   Sep. 15, 2018
@@ -54,7 +55,8 @@ import org.goldenport.sexpr.eval.entity.EntityFactory
  *  version May.  9, 2021
  *  version Sep. 20, 2021
  *  version Nov. 28, 2021
- * @version Apr. 24, 2022
+ *  version Apr. 24, 2022
+ * @version Jul. 17, 2023
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
@@ -173,6 +175,7 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
 
   override final def toResult(expr: SExpr): LispContext = toResult(expr, Record.empty)
 
+  override def toResult(expr: SExpr, i: IncidentSequence): LispContext = toResult(expr, Record.empty, i)
   override final def toResult(expr: SExpr, bindings: IRecord): LispContext = toResult(expr, bindings, IncidentSequence.empty)
 
   def toResult(expr: SExpr, incident: LibIncident): LispContext = toResult(expr, Record.empty, IncidentSequence(incident))
@@ -189,11 +192,17 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
       case Failure(es) => toResult(es)
     }
 
-  def toResultSI(p: (Parameters.Cursor, ValidationNel[SError, (SExpr, Incident)])): LispContext =
+  def toResultWithIncident(p: (Parameters.Cursor, ValidationNel[SError, ResultWithIncident])): LispContext =
     p._2 match {
-      case Success(s) => toResult(s._1, s._2)
+      case Success(s) => toResult(s.result, s.incident)
       case Failure(es) => toResult(es)
     }
+
+  // def toResultSI(p: (Parameters.Cursor, ValidationNel[SError, (SExpr, Incident)])): LispContext =
+  //   p._2 match {
+  //     case Success(s) => toResult(s._1, s._2)
+  //     case Failure(es) => toResult(es)
+  //   }
 
   def toResult(p: NonEmptyList[SError]): LispContext = p.toList match {
     case Nil => toResult(SNil)
@@ -557,4 +566,6 @@ object LispContext {
     def toResult(p: SExpr, b: IRecord, i: IncidentSequence) = copy(value = p, incident = incident + i, bindings = bindings + b.toRecord)
     def addBindings(p: IRecord) = copy(bindings = bindings + p.toRecord)
   }
+
+  case class ResultWithIncident(result: SExpr, incident: Incident)
 }

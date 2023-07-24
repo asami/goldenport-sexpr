@@ -12,6 +12,7 @@ import play.api.libs.json._
 import org.goldenport.Strings
 import org.goldenport.exception.RAISE
 import org.goldenport.i18n.I18NMessage
+import org.goldenport.i18n.I18NString
 import org.goldenport.context.Effect
 import org.goldenport.context.Consequence
 import org.goldenport.record.v2.{XInt, XDecimal}
@@ -33,6 +34,7 @@ import org.goldenport.values.PathName
 import org.goldenport.parser.InterpolationParser
 import org.goldenport.sexpr._, SExprConverter._
 import org.goldenport.sexpr.eval.LispFunction._
+import LispContext.ResultWithIncident
 
 /*
  * @since   Sep. 10, 2018
@@ -66,7 +68,8 @@ import org.goldenport.sexpr.eval.LispFunction._
  *  version Mar. 27, 2022
  *  version Apr. 16, 2022
  *  version May.  6, 2022
- * @version Aug. 31, 2022
+ *  version Aug. 31, 2022
+ * @version Jul. 17, 2023
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -510,6 +513,63 @@ trait IoFunction extends EffectFunction { // I/O bound
     })
   }
 
+  protected final def execute_shell_command_sync_with_incident(
+    strategy: Option[SExpr.CreateStrategy],
+    u: LispContext,
+    commands: Seq[String]
+  ): ResultWithIncident = {
+    execute_shell_command_sync_with_incident(
+      strategy,
+      u,
+      commands,
+      Map.empty,
+      None,
+      None,
+      None
+    )
+  }
+
+  protected final def execute_shell_command_sync_with_incident(
+    strategy: Option[SExpr.CreateStrategy],
+    u: LispContext,
+    commands: Seq[String],
+    env: Map[String, String],
+    dir: Option[File],
+    in: Option[SExpr],
+    timeout: Option[Duration]
+  ): ResultWithIncident = {
+    val start = System.currentTimeMillis
+    val r1 = execute_shell_command(u, commands, env, dir, in, timeout)
+    r1 match {
+      case m: SControl =>
+        val c = m.resolveContext
+        val shresult = _sh_result(c)
+        val r = SExpr.create(strategy, c.value)
+        val end = System.currentTimeMillis
+        val msg = commands.mkString(" ")
+        val i = ShellCommandIncident(start, end, Some(I18NString(msg)), r, Right(shresult))
+        ResultWithIncident(r, i)
+      case m => RAISE.noReachDefect
+    }
+  }
+
+  private def _sh_result(p: LispContext): ShellCommandIncident.Result = {
+    val props = p.bindings
+    val retval: SNumber = props.get(Incident.PROP_RETURN_VALUE) match {
+      case Some(s) => s match {
+        case m: SNumber => m
+      }
+      case None => SNumber(0)
+    }
+    val stdout = props.get("stdout") map {
+      case m: SBlob => m
+    }
+    val stderr = props.get("stderr") map {
+      case m: SBlob => m
+    }
+    new ShellCommandIncident.Result(retval, stdout, stderr)
+  }
+
   private def _success(c: LispContext, p: ShellCommand.Result) = {
     val (props, stdout, _) = _properties(p)
     c.toResult(stdout, props)
@@ -530,7 +590,7 @@ trait IoFunction extends EffectFunction { // I/O bound
     val stdout = SBlob(p.stdout)
     val stderr = SBlob(p.stderr)
     val a = Record.data(
-      "return-code" -> retval,
+      Incident.PROP_RETURN_VALUE -> retval,
       "stdout" -> stdout,
       "stderr" -> stderr
     )
@@ -1474,14 +1534,11 @@ object LispFunction {
         args <- p.param.argumentList[String]
       } yield {
         (strategy |@| args) { (s, xs) =>
-          val r = execute_shell_command(p, xs).resolve // IoFunction is implicitly on SFuture.
-          val ri1 = SExpr.create(s, r)
-          val ri2 = FunctionIncident(0L, "sh", ri1)
-          (ri1, ri2)
+          execute_shell_command_sync_with_incident(s, p, xs)
         }
       }
       val ri = a.run(p.param.cursor(specification))
-      p.toResultSI(ri)
+      p.toResultWithIncident(ri)
     }
 
     def applyEffect(p: LispContext): UnitOfWorkFM[LispContext] = RAISE.notImplementedYetDefect

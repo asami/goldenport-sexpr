@@ -6,12 +6,14 @@ import org.goldenport.incident.{Incident => LibIncident}
 
 /*
  * @since   Apr. 24, 2022
- * @version Apr. 24, 2022
+ * @version Jul. 20, 2023
  * @author  ASAMI, Tomoharu
  */
 case class IncidentSequence( // See org.goldenport.context.Incidents
   incidents: Vector[LibIncident] = Vector.empty
 ) extends Showable {
+  def isEmpty = incidents.isEmpty
+
   def print = incidents.toList match {
     case Nil => "N/A"
     case x :: Nil => x.print

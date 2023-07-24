@@ -1,5 +1,6 @@
 package org.goldenport.sexpr.eval
 
+import scala.util.control.NonFatal
 import java.net.URL
 import java.sql.Timestamp
 import org.goldenport.value._
@@ -12,6 +13,7 @@ import org.goldenport.record.http
 import org.goldenport.incident.{Incident => LibIncident, ApplicationIncident}
 import org.goldenport.sexpr._
 import org.goldenport.util.AnyUtils
+import LispContext.ResultWithIncident
 import Incident._
 
 /*
@@ -19,7 +21,8 @@ import Incident._
  *  version Jun. 24, 2019
  *  version Jun. 17, 2021
  *  version Apr. 16, 2022
- * @version Jan. 22, 2023
+ *  version Jan. 22, 2023
+ * @version Jul. 17, 2023
  * @author  ASAMI, Tomoharu
  */
 trait Incident extends ApplicationIncident {
@@ -50,37 +53,35 @@ case class ShellCommandIncident(
   start: Long,
   end: Long,
   message: Option[I18NString],
-  result: Either[Throwable, ShellCommand.Result]
+  expr: SExpr,
+  result: Either[Throwable, ShellCommandIncident.Result]
 ) extends Incident {
   val kind = ShellCommandKind
   def exception = result.left.toOption
 
+  lazy val retval = result match {
+    case Right(r) => r.retval
+    case Left(l) => SNumber(-1)
+  }
+
   lazy val stdout = result match {
-    case Right(r) => Some(SBlob(r.stdout))
+    case Right(r) => r.stdout
     case Left(l) => None
   }
 
   lazy val stderr = result match {
-    case Right(r) => Some(SClob(r.stderr))
+    case Right(r) => r.stderr
     case Left(l) => None
   }
 
   lazy val bindings: Record = {
-    val r = result match {
-      case Right(r) => r.waitFor
-      case Left(l) => -1
-    }
-    val retval = SNumber(r)
-    val code = result match {
-      case Right(r) => r.waitFor match {
-        case 0 => 200
-        case _ => _parse_error(r.stderr)
-      }
-      case Left(l) => -1
+    val code = retval.asInt match {
+      case 0 => 200
+      case _ => 500 // _parse_error(stderr)
     }
     Record.data(
       PROP_INCIDENT_KIND -> SString(kind.name),
-      PROP_IS_SUCCESS -> SBoolean(r == 0),
+      PROP_IS_SUCCESS -> SBoolean(retval.asInt == 0),
       PROP_RETURN_VALUE -> retval,
       PROP_RETURN_CODE -> SNumber(code)
     ) + Record.dataOption(
@@ -93,13 +94,57 @@ case class ShellCommandIncident(
 
   def show = kind.name // TODO
 
-  def isNotFound = stderr.fold(false)(_.text.contains("command not found"))
+  def isNotFound = stderr.flatMap(_.getString).fold(false)(_.contains("command not found"))
 }
 object ShellCommandIncident {
+  case class Result(
+    retval: SNumber,
+    stdout: Option[SBlob],
+    stderr: Option[SBlob]
+  )
+  object Result {
+    // TODO async
+    def sync(p: ShellCommand.Result): Result = {
+      val retval: SNumber = SNumber(p.waitFor) // XXX
+      val stdout = _sblob_option(p.stdout)
+      val stderr = _sblob_option(p.stderr)
+      Result(retval, stdout, stderr)
+    }
+
+    private def _sblob_option(p: ChunkBag): Option[SBlob] =
+      if (p.isEmpty)
+        None
+      else
+        Some(SBlob(p))
+  }
+
+  // def apply(start: Long, result: ShellCommand.Result): ShellCommandIncident =
+  //   ShellCommandIncident(start, System.currentTimeMillis, None, Right(result))
+  // def apply(start: Long, e: Throwable): ShellCommandIncident =
+  //   ShellCommandIncident(start, System.currentTimeMillis, None, Left(e))
+
   def apply(start: Long, result: ShellCommand.Result): ShellCommandIncident =
-    ShellCommandIncident(start, System.currentTimeMillis, None, Right(result))
-  def apply(start: Long, e: Throwable): ShellCommandIncident =
-    ShellCommandIncident(start, System.currentTimeMillis, None, Left(e))
+    ShellCommandIncident(start, System.currentTimeMillis, None, SExpr.create(), Right(Result.sync(result)))
+
+  def execute(ps: Seq[String], tosexpr: ShellCommand.Result => SExpr)(body: => ShellCommand.Result): ResultWithIncident =
+    execute(ps.mkString(" "), tosexpr)(body)
+
+  def execute(label: String, tosexpr: ShellCommand.Result => SExpr)(body: => ShellCommand.Result): ResultWithIncident = {
+    val start = System.currentTimeMillis
+    try {
+      val r = body
+      val sexpr = tosexpr(r)
+      val end = System.currentTimeMillis
+      val i = apply(start, end, Some(I18NString(label)), sexpr, Right(Result.sync(r)))
+      ResultWithIncident(sexpr, i)
+    } catch {
+      case NonFatal(e) =>
+        val sexpr = SError(e)
+        val end = System.currentTimeMillis
+        val i = apply(start, end, Some(I18NString(label)), sexpr, Left(e))
+        ResultWithIncident(sexpr, i)
+    }
+  }
 }
 
 case class RestIncident(
@@ -147,6 +192,100 @@ object RestIncident {
 
   def apply(start: Long, req: http.Request, e: Throwable): RestIncident =
     RestIncident(start, System.currentTimeMillis, None, req, Left(e))
+}
+
+case class RpcIncident( // TODO tune for RPC
+  start: Long,
+  end: Long,
+  message: Option[I18NString],
+  request: http.Request,
+  response: Either[Throwable, http.Response]
+) extends Incident {
+  val kind = ShellCommandKind
+  def exception = response.left.toOption
+
+  val code = response match {
+    case Right(r) => SNumber(r.code)
+    case Left(l) => SNumber(500)
+  }
+
+  val issuccess = response match {
+    case Right(r) => SBoolean(r.isSuccess)
+    case Left(l) => SBoolean.FALSE
+  }
+
+  lazy val bindings: Record = {
+    Record.data(
+      PROP_INCIDENT_KIND -> SString(kind.name),
+      PROP_IS_SUCCESS -> issuccess,
+      PROP_RETURN_VALUE -> code,
+      PROP_RETURN_CODE -> code,
+      "request-url" -> SUrl(request.url),
+      "request-method" -> SString(request.method.name),
+      "response-code" -> code
+    )
+  }
+
+  def show = s"${request.url} => ${_show_result}"
+
+  private def _show_result = response match {
+    case Left(e) => e.toString
+    case Right(res) => res.code.toString
+  }
+}
+object RpcIncident {
+  def apply(start: Long, req: http.Request, res: http.Response): RpcIncident =
+    RpcIncident(start, System.currentTimeMillis, None, req, Right(res))
+
+  def apply(start: Long, req: http.Request, e: Throwable): RpcIncident =
+    RpcIncident(start, System.currentTimeMillis, None, req, Left(e))
+}
+
+case class MessagingIncident( // TODO tune for MESSAGING
+  start: Long,
+  end: Long,
+  message: Option[I18NString],
+  request: http.Request,
+  response: Either[Throwable, http.Response]
+) extends Incident {
+  val kind = ShellCommandKind
+  def exception = response.left.toOption
+
+  val code = response match {
+    case Right(r) => SNumber(r.code)
+    case Left(l) => SNumber(500)
+  }
+
+  val issuccess = response match {
+    case Right(r) => SBoolean(r.isSuccess)
+    case Left(l) => SBoolean.FALSE
+  }
+
+  lazy val bindings: Record = {
+    Record.data(
+      PROP_INCIDENT_KIND -> SString(kind.name),
+      PROP_IS_SUCCESS -> issuccess,
+      PROP_RETURN_VALUE -> code,
+      PROP_RETURN_CODE -> code,
+      "request-url" -> SUrl(request.url),
+      "request-method" -> SString(request.method.name),
+      "response-code" -> code
+    )
+  }
+
+  def show = s"${request.url} => ${_show_result}"
+
+  private def _show_result = response match {
+    case Left(e) => e.toString
+    case Right(res) => res.code.toString
+  }
+}
+object MessagingIncident {
+  def apply(start: Long, req: http.Request, res: http.Response): MessagingIncident =
+    MessagingIncident(start, System.currentTimeMillis, None, req, Right(res))
+
+  def apply(start: Long, req: http.Request, e: Throwable): MessagingIncident =
+    MessagingIncident(start, System.currentTimeMillis, None, req, Left(e))
 }
 
 case class FileIncident(

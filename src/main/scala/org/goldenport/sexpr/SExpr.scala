@@ -101,7 +101,8 @@ import org.goldenport.sexpr.script.Script
  *  version May.  8, 2022
  *  version Aug. 31, 2022
  *  version Feb. 28, 2023
- * @version Apr. 22, 2023
+ *  version Apr. 22, 2023
+ * @version Jul. 24, 2023
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -779,7 +780,7 @@ case class SMetaCommand(command: String, args: List[String]) extends SExpr {
   // def show = toString
 }
 object SMetaCommand {
-  def apply(p: String): SMetaCommand = Strings.totokens(p) match {
+  def apply(p: String): SMetaCommand = Strings.totokens(p, " ") match {
     case Nil => SMetaCommand("help", Nil)
     case x :: xs => SMetaCommand(x, xs)
   }
