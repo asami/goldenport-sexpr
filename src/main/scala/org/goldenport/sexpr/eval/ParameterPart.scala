@@ -2,14 +2,16 @@ package org.goldenport.sexpr.eval
 
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
+import java.nio.charset.Charset
 import org.goldenport.RAISE
+import org.goldenport.io.InputSource
+import org.goldenport.value._
 import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v3.{Record, RecordSequence, Table}
 import org.goldenport.record.store.Id
 import org.goldenport.record.store._
 import org.goldenport.record.query.QueryExpression
 import org.goldenport.collection.NonEmptyVector
-import org.goldenport.value._
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.entity.{EntityCollection, EntityId, EntityClass}
 import Parameters.Cursor
@@ -27,7 +29,9 @@ import Parameters.Cursor
  *  version Apr. 12, 2021
  *  version Jun. 13, 2021
  *  version Sep. 19, 2021
- * @version Apr.  9, 2022
+ *  version Apr.  9, 2022
+ *  version Jul. 31, 2023
+ * @version Aug.  1, 2023
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -78,6 +82,10 @@ trait ParameterPart { self: LispContext =>
 
     def tableHeader(u: LispContext) = State[Cursor, ValidationNel[SError, Option[Table.HeaderStrategy]]](_.tableHeader(u))
 
+    def textInFile(u: LispContext) = State[Cursor, ValidationNel[SError, String]](_.textInFile(u))
+
+    def textInFileOr[T](u: LispContext)(f: PartialFunction[Any, T]) = State[Cursor, ValidationNel[SError, Either[String, T]]](_.textInFileOr(u)(f))
+
     /*
      * Property
      */
@@ -99,6 +107,22 @@ trait ParameterPart { self: LispContext =>
     def getStringStrict(key: Symbol) = State[Cursor, ValidationNel[SError, Option[String]]](_.getStringStrict(key))
 
     def propertyStringList(key: Symbol) = State[Cursor, ValidationNel[SError, List[String]]](_.propertyStringList(key))
+
+    def takeCharset(key: Symbol) = State[Cursor, ValidationNel[SError, Charset]](_.takeCharset(key))
+
+    def getCharset(key: Symbol) = State[Cursor, ValidationNel[SError, Option[Charset]]](
+_.getCharset(key))
+
+    def takeInputSource(key: Symbol) = State[Cursor, ValidationNel[SError, InputSource]](_.takeInputSource(key))
+
+    def getInputSource(key: Symbol) = State[Cursor, ValidationNel[SError, Option[InputSource]]](_.getInputSource(key))
+
+    def takeTextInFile(key: Symbol, charset: Charset) = State[Cursor, ValidationNel[SError, String]](_.takeTextInFile(key, charset))
+
+    def takeTextInFile(key: Symbol, charset: ValidationNel[SError, Option[Charset]]) =
+      State[Cursor, ValidationNel[SError, String]](_.takeTextInFile(i18nContext, key, charset))
+
+    def getTextInFile(key: Symbol, charset: Charset) = State[Cursor, ValidationNel[SError, Option[String]]](_.getTextInFile(key, charset))
 
     // case class Cursor(spec: FunctionSpecification, parameters: Parameters) {
     //   def argument1[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, A]) =

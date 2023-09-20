@@ -1,12 +1,16 @@
 package org.goldenport.sexpr.eval
 
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
+import Validation.FlatMap._ 
 import scala.util.control.NonFatal
+import java.nio.charset.Charset
 import org.goldenport.RAISE
 import org.goldenport.context.Consequence
 import org.goldenport.context.ConsequenceSequence
+import org.goldenport.i18n.I18NContext
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.collection.VectorMap
+import org.goldenport.io.InputSource
 import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v2.{XDecimal}
 import org.goldenport.record.v3.{IRecord, Record, RecordSequence, Table}
@@ -46,7 +50,10 @@ import org.goldenport.value._
  *  version May.  5, 2022
  *  version Aug. 31, 2022
  *  version Sep.  1, 2022
- * @version Nov.  6, 2022
+ *  version Nov.  6, 2022
+ *  version Jul. 31, 2023
+ *  version Aug.  4, 2023
+ * @version Sep. 17, 2023
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -183,14 +190,36 @@ case class Parameters(
       case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
     })
 
+  def fetchPropertyStringOption(p: Symbol): ValidationNel[SError, Option[String]] =
+    fetch_property_option(p) {
+      case SString(s) => Success(s).toValidationNel
+      case SAtom(n) => Success(n).toValidationNel
+      case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
+    }
+
   def fetchPropertyStringStrict(p: Symbol): ValidationNel[SError, String] =
     fetch_property(p)(_ match {
       case SString(s) => Success(s).toValidationNel
       case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
     })
 
+  def fetchPropertyCharsetOption(p: Symbol): ValidationNel[SError, Option[Charset]] =
+    for {
+      s <- fetchPropertyStringOption(p)
+      r <- SExpr.executeValidationNel(s.map(Charset.forName))
+    } yield r
+
   protected def fetch_property[T](p: Symbol)(body: SExpr => ValidationNel[SError, T]): ValidationNel[SError, T] = 
     getProperty(p).map(body).getOrElse(Failure(SError.notFound(p)).toValidationNel)
+
+  protected def fetch_property_option[T](p: Symbol)(body: SExpr => ValidationNel[SError, T]): ValidationNel[SError, Option[T]] = 
+    getProperty(p).map(body) match {
+      case Some(s) => s match {
+        case Success(x) => Success(Some(x))
+        case Failure(e) => Failure(e)
+      }
+      case None => Success(None).toValidationNel
+    }
 
   def isSwitch(p: Symbol): Boolean = switches.contains(p)
 
@@ -464,11 +493,38 @@ object Parameters {
     protected def to_success[T](newspec: FunctionSpecification, r: T): (Cursor, ValidationNel[SError, T]) =
       (copy(spec = newspec), Success(r))
 
+    protected def to_success_pop[T](newspec: FunctionSpecification, r: T): (Cursor, ValidationNel[SError, T]) =
+      (copy(spec = newspec, parameters = parameters.pop), Success(r))
+
     protected def to_error[T](newspec: FunctionSpecification, e: SError): (Cursor, ValidationNel[SError, T]) =
       (copy(spec = newspec), Failure(NonEmptyList(e)))
 
     protected def to_error[T](e: SError): (Cursor, ValidationNel[SError, T]) =
       (this, Failure(NonEmptyList(e)))
+
+    protected def to_error[T](es: NonEmptyList[SError]): (Cursor, ValidationNel[SError, T]) =
+      (this, Failure(es))
+
+    protected def to_error[T](msg: String): (Cursor, ValidationNel[SError, T]) =
+      to_error(SError(msg))
+
+    protected def to_error_not_found[T](label: String, key: String): (Cursor, ValidationNel[SError, T]) =
+      to_error(SError.notFound(label, key))
+
+    protected def to_error_not_found[T](key: String): (Cursor, ValidationNel[SError, T]) =
+      to_error(SError.notFound(key))
+
+    protected def to_error_not_found[T](key: Symbol): (Cursor, ValidationNel[SError, T]) =
+      to_error_not_found(key.name)
+
+    protected def to_error_illegal_argument[T](key: Symbol, p: SExpr): (Cursor, ValidationNel[SError, T]) =
+      to_error(SError.invalidArgumentFault(key, p))
+
+    protected def to_error_illegal_argument[T](msg: String): (Cursor, ValidationNel[SError, T]) =
+      to_error(SError.invalidArgumentFault(msg))
+
+    protected def to_error_missing_argument[T](msg: String): (Cursor, ValidationNel[SError, T]) =
+      to_error(SError.missingArgumentFault(msg))
 
     protected def run_cursor[T](body: => ValidationNel[SError, T]): (Cursor, ValidationNel[SError, T]) = try {
       val r = body
@@ -485,7 +541,8 @@ object Parameters {
 
     def error(p: SError): (Cursor, ValidationNel[SError, SExpr]) = RAISE.notImplementedYetDefect
 
-    def lift[A](p: A): (Cursor, ValidationNel[SError, A]) = RAISE.notImplementedYetDefect
+    def lift[A](p: A): (Cursor, ValidationNel[SError, A]) =
+      to_result(spec, Success(p))
 
     def argument: (Cursor, ValidationNel[SError, SExpr]) = try {
       parameters.arguments match {
@@ -711,6 +768,70 @@ object Parameters {
       to_result(nextspec, r)
     }
 
+    def textInFile(u: LispContext): (Cursor, ValidationNel[SError, String]) =
+      parameters.getArgumentOneBased(1) match {
+        case Some(s) =>
+          val nextspec = spec // TODO
+          val props = parameters.fetchPropertyCharsetOption('charset)
+          props match {
+            case Success(v) =>
+              val charset = v getOrElse u.i18nContext.charsetInputFile
+              _text_in_file(spec, s, charset)
+            case Failure(e) => to_error(e)
+          }
+        case None => to_error_missing_argument("Missing argument: string or file containing string")
+      }
+
+    private def _text_in_file(
+      nextspec: FunctionSpecification,
+      p: SExpr,
+      charset: Charset
+    ): (Cursor, ValidationNel[SError, String]) =
+      p match {
+        case m: SError => to_error(m)
+        case m: SString => _text_in_file_string(nextspec, m.string, charset)
+        case m: SUrl => to_success_pop(nextspec, InputSource(m.asUrl).asText(charset))
+        case m: SUrn => to_success_pop(nextspec, InputSource(m.asUrl).asText(charset))
+        case m: SUri => to_success_pop(nextspec, InputSource(m.asUrl).asText(charset))
+        case m: SDocument => to_success_pop(nextspec, m.rawString)
+        case m: SXPath => _text_in_file_string(nextspec, m.path, charset)
+        case m => to_error_illegal_argument(s"Illega argument for string or file containing string: ${m.display}")
+      }
+
+    private def _text_in_file_string(
+      nextspec: FunctionSpecification,
+      p: String,
+      charset: Charset
+    ): (Cursor, ValidationNel[SError, String]) =
+      if (p.contains('\n') || p.contains('\r') || p.contains('\t')) {
+        to_success_pop(nextspec, p)
+      } else try {
+        to_success_pop(nextspec, InputSource.create(p).asText(charset))
+      } catch {
+        case NonFatal(e) => to_success_pop(nextspec, p)
+      }
+
+    def textInFileOr[T](u: LispContext)(f: PartialFunction[Any, T]): (Cursor, ValidationNel[SError, Either[String, T]]) = {
+      parameters.getArgumentOneBased(1) match {
+        case Some(s) =>
+          val nextspec = spec // TODO
+          if (f.isDefinedAt(s)) {
+            val r = f(s)
+            to_success_pop(nextspec, Right(r))
+          } else {
+            val props = parameters.fetchPropertyCharsetOption('charset)
+            props match {
+              case Success(v) =>
+                val charset = v getOrElse u.i18nContext.charsetInputFile
+                val (c, a) = _text_in_file(spec, s, charset)
+                (c, a.map(x => Left(x)))
+              case Failure(e) => to_error(e)
+            }
+          }
+        case None => to_error_missing_argument("Missing argument: string, file containing string or object")
+      }
+    }
+
     /*
      * Property
      */
@@ -779,6 +900,102 @@ object Parameters {
         }.getOrElse {
           to_success(nextspec, None)
         }
+    }
+
+    def takeCharset(key: Symbol): (Cursor, ValidationNel[SError, Charset]) =
+      _take_value_from_string(key, Charset.forName)
+
+    def getCharset(key: Symbol): (Cursor, ValidationNel[SError, Option[Charset]]) =
+      _get_value_from_string(key, Charset.forName)
+
+    def takeInputSource(key: Symbol): (Cursor, ValidationNel[SError, InputSource]) =
+      _take_value_from_string(key, InputSource.create)
+
+    def getInputSource(key: Symbol): (Cursor, ValidationNel[SError, Option[InputSource]]) =
+      _get_value_from_string(key, InputSource.create)
+
+    def takeTextInFile(key: Symbol, charset: Charset): (Cursor, ValidationNel[SError, String]) = {
+      val nextspec = spec // TODO
+      parameters.getProperty(key) match {
+        case Some(s) => s match {
+          case m: SError => to_error(m)
+          case m: SString => to_success(nextspec, m.string)
+          case m: SUrl => _to_result(nextspec, InputSource(m.asUrl).asText(charset))
+          case m: SUrn => _to_result(nextspec, InputSource(m.asUrl).asText(charset))
+          case m: SUri => _to_result(nextspec, InputSource(m.asUrl).asText(charset))
+          case m => to_error_illegal_argument(key, m)
+        }
+        case None => to_error_not_found(key)
+      }
+    }
+
+    def takeTextInFile(c: I18NContext, key: Symbol, charset: ValidationNel[SError, Option[Charset]]): (Cursor, ValidationNel[SError, String]) =
+      charset match {
+        case Success(s) => takeTextInFile(key, s getOrElse c.charsetInputFile)
+        case Failure(e) => to_error(e)
+      }
+
+    def getTextInFile(key: Symbol, charset: Charset): (Cursor, ValidationNel[SError, Option[String]]) = {
+      val nextspec = spec // TODO
+      parameters.getProperty(key) match {
+        case Some(s) => s match {
+          case m: SError => to_error(m)
+          case m: SString => to_success(nextspec, Some(m.string))
+          case m: SUrl => _to_result_option(nextspec, InputSource(m.asUrl).asText(charset))
+          case m: SUrn => _to_result_option(nextspec, InputSource(m.asUrl).asText(charset))
+          case m: SUri => _to_result_option(nextspec, InputSource(m.asUrl).asText(charset))
+          case m => to_error_illegal_argument(key, m)
+        }
+        case None => to_success(nextspec, None)
+      }
+    }
+
+    def getTextInFile(key: Symbol, charset: ValidationNel[SError, Charset]): (Cursor, ValidationNel[SError, Option[String]]) =
+      charset match {
+        case Success(s) => getTextInFile(key, s)
+        case Failure(e) => to_error(e)
+      }
+
+    private def _to_result[T](
+      nextspec: FunctionSpecification,
+      body: => T
+    ): (Cursor, ValidationNel[SError, T]) = {
+      SExpr.valueOrError(body) match {
+        case Left(m) => to_error(nextspec, m)
+        case Right(m) => to_success(nextspec, m)
+      }
+    }
+
+    private def _to_result_option[T](
+      nextspec: FunctionSpecification,
+      body: => T
+    ): (Cursor, ValidationNel[SError, Option[T]]) = {
+      SExpr.valueOrError(body) match {
+        case Left(m) => to_error(nextspec, m)
+        case Right(m) => to_success(nextspec, Some(m))
+      }
+    }
+
+    private def _get_value_from_string[T](key: Symbol, tovalue: String => T): (Cursor, ValidationNel[SError, Option[T]]) = {
+      val nextspec = spec // TODO
+      parameters.getPropertyString(key) match {
+        case Some(s) => SExpr.valueOrError(tovalue(s)) match {
+          case Left(m) => to_error(nextspec, m)
+          case Right(m) => to_success(nextspec, Some(m))
+        }
+        case None => to_success(nextspec, None)
+      }
+    }
+
+    private def _take_value_from_string[T](key: Symbol, tovalue: String => T): (Cursor, ValidationNel[SError, T]) = {
+      val nextspec = spec // TODO
+      parameters.getPropertyString(key) match {
+        case Some(s) => SExpr.valueOrError(tovalue(s)) match {
+          case Left(m) => to_error(nextspec, m)
+          case Right(m) => to_success(nextspec, m)
+        }
+        case None => to_error_not_found(key)
+      }
     }
   }
   object Cursor {

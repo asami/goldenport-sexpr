@@ -28,7 +28,8 @@ import org.goldenport.sexpr._
  *  version Sep. 16, 2019
  *  version Oct. 31, 2019
  *  version Jan. 24, 2021
- * @version Mar. 21, 2021
+ *  version Mar. 21, 2021
+ * @version Aug.  4, 2023
  * @author  ASAMI, Tomoharu
  */
 trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
@@ -98,13 +99,16 @@ trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
       case m: SI18NTemplate => m
       case m: SRegex => m
       case m: SDocument => m
+      case m: SModel => m
       case r: SRecord => eval_record(r)
       case t: STable => eval_table(t)
       case m: SMatrix => m
       case m: SLxsv => m
+      case m: STree => m
       case m: SUrl => m
       case m: SUrn => m
       case m: SScript => eval_script(m)
+      case m: SObject => m
       case x: SXml => eval_xml(x)
       case m: SHtml => m
       case m: SXPath => m
@@ -168,7 +172,11 @@ trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
 
   protected def eval_lxsv(p: SLxsv): SExpr = p
 
+  protected def eval_tree(p: STree): SExpr = p
+
   protected def eval_document(p: SDocument): SExpr = p
+
+  protected def eval_model(p: SModel): SExpr = p
 
   protected def eval_datetime(p: SDateTime): SExpr = p
 
@@ -181,6 +189,8 @@ trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
   protected def eval_urn(p: SUrn): SExpr = p
 
   protected def eval_script(p: SScript): SExpr = p
+
+  protected def eval_object(p: SObject): SExpr = p
 
   protected def eval_xml(p: SXml): SExpr = p
 
@@ -228,13 +238,16 @@ trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
       case t: STable => eval_table_to_context(t)
       case m: SMatrix => eval_matrix_to_context(m)
       case m: SLxsv => eval_lxsv_to_context(m)
+      case m: STree => eval_tree_to_context(m)
       case m: SDocument => eval_document_to_context(m)
+      case m: SModel => eval_model_to_context(m)
       case m: SDateTime => eval_datetime_to_context(m)
       case m: SLocalDate => eval_localdate_to_context(m)
       case m: SLocalTime => eval_localtime_to_context(m)
       case m: SUrl => eval_url_to_context(m)
       case m: SUrn => eval_urn_to_context(m)
       case m: SScript => eval_script_to_context(m)
+      case m: SObject => eval_object_to_context(m)
       case x: SXml => eval_xml_to_context(x)
       case j: SJson => eval_json_to_context(j)
       case m: SXPath => eval_xpath_to_context(m)
@@ -283,8 +296,16 @@ trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
     create_Eval_Context(eval_lxsv(p))
   }
 
+  protected def eval_tree_to_context(p: STree): C = {
+    create_Eval_Context(eval_tree(p))
+  }
+
   protected def eval_document_to_context(p: SDocument): C = {
     create_Eval_Context(eval_document(p))
+  }
+
+  protected def eval_model_to_context(p: SModel): C = {
+    create_Eval_Context(eval_model(p))
   }
 
   protected def eval_datetime_to_context(p: SDateTime): C = {
@@ -310,6 +331,10 @@ trait Evaluator[C <: EvalContext] extends Loggable with Recordable {
   // override by LispEvaluator
   protected def eval_script_to_context(p: SScript): C = {
     create_Eval_Context(eval_script(p))
+  }
+
+  protected def eval_object_to_context(p: SObject): C = {
+    create_Eval_Context(eval_object(p))
   }
 
   protected def eval_xml_to_context(p: SXml): C = {

@@ -1,6 +1,7 @@
 package org.goldenport.sexpr
 
 import scalaz.NonEmptyList
+import scalaz.{ValidationNel, Success, Failure}
 import scala.collection.JavaConverters._
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -23,6 +24,7 @@ import org.goldenport.i18n.I18NMessage
 import org.goldenport.i18n.StringFormatter
 import org.goldenport.console.Message
 import org.goldenport.collection.NonEmptyVector
+import org.goldenport.realm.Realm
 import org.goldenport.extension.IWindow
 import org.goldenport.extension.{IDocument => GDocument}
 import org.goldenport.extension.Showable
@@ -102,7 +104,8 @@ import org.goldenport.sexpr.script.Script
  *  version Aug. 31, 2022
  *  version Feb. 28, 2023
  *  version Apr. 22, 2023
- * @version Jul. 24, 2023
+ *  version Jul. 31, 2023
+ * @version Aug.  5, 2023
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -231,7 +234,7 @@ sealed trait SExpr extends Showable {
   /*
    * Show short representation to embeded in container format like table.
    */
-  // def embed: String = display
+  override def embed: String = super.embed
 
   /*
    * Beautified representation.
@@ -283,6 +286,8 @@ trait IDom { self: SExpr =>
 trait IDocument extends GDocument
 trait IVoucher extends IRecord // obsolated
 trait ISlip extends IRecord
+trait IModel extends Showable {
+}
 
 trait IProcess {
   def result: Future[SExpr]
@@ -711,6 +716,14 @@ object SError {
 
   def invalidArgumentFault(p: String): SError = SError(_bad_request, p)
 
+  def invalidArgumentFault(name: Symbol, p: SExpr): SError =
+    invalidArgumentFault(name.name, p)
+
+  def invalidArgumentFault(name: String, p: SExpr): SError = {
+    val label = s"Invalid argument '$name': ${p.display}"
+    SError(_bad_request, label)
+  }
+
   def missingArgumentFault(p: String): SError = SError(_bad_request, p) // TODO
 
   def invalidDatatype(name: String, p: SExpr): SError =
@@ -877,9 +890,21 @@ object SBlob {
 
 // literal document format (e.g. smartdox)
 case class SDocument(document: IDocument) extends SExpr {
-  override def getString = Some(document.toString)
+  override def getString = Some(document.print)
   // def print = show
   // def show = document.toString
+  def rawString = document.print
+}
+
+case class SModel(model: IModel) extends SExpr {
+  override def getString = super.getString
+  override def print_String = model.print
+  override def literal_String = super.literal_String
+  override def marshall_String = super.marshall_String
+  override def display_String = model.display
+  override def show_Content = Some(model.show)
+  override def embed = model.embed
+  override def pretty = super.pretty
 }
 
 case class SSlip(slip: ISlip) extends SExpr {
@@ -1134,6 +1159,21 @@ object SLxsv {
   def createOption(p: String): Option[SLxsv] = Lxsv.createOption(p).map(SLxsv.apply)
 }
 
+case class STree(tree: Realm) extends SExpr {
+  def get(path: String): Option[SExpr] =
+    tree.get(path).map(STree.sexpr)
+}
+object STree {
+  def sexpr(p: Realm.Data): SExpr = p match {
+    case Realm.StringData(string) => SString(string)
+    case Realm.UrlData(url) => SUrl(url)
+    case Realm.BagData(bag) => SBlob(bag.toBlobBag)
+    case Realm.ObjectData(o) => SObject(o)
+    case m: Realm.ApplicationData => SObject(m)
+    case Realm.EmptyData => SString("")
+  }
+}
+
 case class SUrl(url: java.net.URL) extends SExpr {
   override def getString = Some(url.toString)
   override lazy val asString = url.toString
@@ -1254,7 +1294,14 @@ case class SSingleQuote() extends SExpr {
   // def show = "SingleQuote()"
 }
 
+// obsolated by SObject
 case class SBean(o: AnyRef) extends SExpr { // JavaBeans or Java Object
+  override def getString = Some(o.toString)
+  // def print = show
+  // def show = o.toString
+}
+
+case class SObject(o: AnyRef) extends SExpr { // JavaBeans or Java Object
   override def getString = Some(o.toString)
   // def print = show
   // def show = o.toString
@@ -2087,6 +2134,25 @@ object SExpr {
     }
   } catch {
     case NonFatal(e) => SError(e)
+  }
+
+  def valueOrError[T](p: => T): Either[SError, T] = try {
+    Right(p)
+  } catch {
+    case NonFatal(e) => Left(SError(e))
+  }
+
+  def valueOrError[T](msg: Throwable => String, p: => T): Either[SError, T] = try {
+    Right(p)
+  } catch {
+    case NonFatal(e) => Left(SError(msg(e)))
+  }
+
+  def executeValidationNel[T](body: => T): ValidationNel[SError, T] = try {
+    Success(body)
+  } catch {
+    case SError.SErrorException(e) => Failure(e).toValidationNel
+    case NonFatal(e) => Failure(SError(e)).toValidationNel
   }
 
   def getKeyword[T](expr: SExpr, keyword: String)(implicit pf: PartialFunction[SExpr, T]): Option[T] = {

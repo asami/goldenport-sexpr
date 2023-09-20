@@ -1,6 +1,7 @@
 package org.goldenport.sexpr.eval.entity
 
 import org.goldenport.context.Consequence
+import org.goldenport.context.Showable
 import org.goldenport.record.v3.IRecord
 import org.goldenport.record.v3.Field
 import org.goldenport.statemachine.StateMachine
@@ -9,10 +10,11 @@ import org.goldenport.sexpr.eval.LispContext
 /*
  * @since   Sep. 18, 2021
  *  version Oct. 31, 2021
- * @version Nov. 28, 2021
+ *  version Nov. 28, 2021
+ * @version Aug.  6, 2023
  * @author  ASAMI, Tomoharu
  */
-trait EntityClass {
+trait EntityClass extends Showable {
   def create(p: IRecord)(implicit ctx: LispContext): Consequence[Entity]
   def reconstitute(p: IRecord): Consequence[Entity]
   def unmarshallProperties(p: IRecord): Consequence[IRecord]
