@@ -16,6 +16,7 @@ import org.goldenport.trace.Container
 import org.goldenport.record.v3.{IRecord, Record}
 import org.goldenport.record.v3.sql.SqlContext
 import org.goldenport.record.query.QueryExpression
+import org.goldenport.record.store.Query
 import org.goldenport.record.unitofwork.interpreter.{UnitOfWorkLogic, StoreOperationLogic}
 import org.goldenport.record.http.Response
 import org.goldenport.log.LogMark._
@@ -56,7 +57,8 @@ import LispContext.ResultWithIncident
  *  version Sep. 20, 2021
  *  version Nov. 28, 2021
  *  version Apr. 24, 2022
- * @version Jul. 17, 2023
+ *  version Jul. 17, 2023
+ * @version Sep. 30, 2023
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
@@ -484,7 +486,7 @@ object LispContext {
     config: LispConfig,
     datetimecontext: DateTimeContext,
     i18ncontext: I18NContext,
-    querycontext: QueryExpression.Context,
+    querycontext: Query.Context,
     entityfactory: EntityFactory,
     evaluator: LispContext => LispContext, // apply_context
     x: SExpr
@@ -510,7 +512,7 @@ object LispContext {
     config: LispConfig,
     datetimecontext: DateTimeContext,
     i18ncontext: I18NContext,
-    querycontext: QueryExpression.Context,
+    querycontext: Query.Context,
     feature: FeatureContext,
     evaluator: LispContext => LispContext, // apply_context
     x: SExpr

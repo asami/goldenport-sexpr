@@ -11,6 +11,8 @@ import org.goldenport.i18n.I18NContext
 import org.goldenport.collection.NonEmptyVector
 import org.goldenport.collection.VectorMap
 import org.goldenport.io.InputSource
+import org.goldenport.util.StringUtils
+import org.goldenport.util.NumberUtils
 import org.goldenport.record.v2.{Schema}
 import org.goldenport.record.v2.{XDecimal}
 import org.goldenport.record.v3.{IRecord, Record, RecordSequence, Table}
@@ -53,7 +55,7 @@ import org.goldenport.value._
  *  version Nov.  6, 2022
  *  version Jul. 31, 2023
  *  version Aug.  4, 2023
- * @version Sep. 17, 2023
+ * @version Sep. 30, 2023
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -197,11 +199,37 @@ case class Parameters(
       case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
     }
 
+  def fetchPropertyStringListOption(p: String): ValidationNel[SError, Option[List[String]]] =
+    fetchPropertyStringListOption(Symbol(p))
+
+  def fetchPropertyStringListOption(p: Symbol): ValidationNel[SError, Option[List[String]]] =
+    fetch_property_option(p) {
+      case SString(s) => Success(StringUtils.eagerCommaForm(s)).toValidationNel
+      case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
+    }
+
   def fetchPropertyStringStrict(p: Symbol): ValidationNel[SError, String] =
     fetch_property(p)(_ match {
       case SString(s) => Success(s).toValidationNel
       case m => Failure(SError.invalidDatatype(p.name, m)).toValidationNel
     })
+
+  def fetchPropertyIntOption(p: String): ValidationNel[SError, Option[Int]] =
+    fetchPropertyIntOption(Symbol(p))
+
+  def fetchPropertyIntOption(p: Symbol): ValidationNel[SError, Option[Int]] = {
+    def _success_(n: Int) = Success(n).toValidationNel
+    def _error_(e: SExpr) = Failure(SError.invalidDatatype(p.name, e)).toValidationNel
+
+    fetch_property_option(p) {
+      case SNumber(n) if (n.canBeInt) => _success_(n.intValue)
+      case m: SString => NumberUtils.getInt(m.string) match {
+        case Some(s) => _success_(s)
+        case None => _error_(m)
+      }
+      case m => _error_(m)
+    }
+  }
 
   def fetchPropertyCharsetOption(p: Symbol): ValidationNel[SError, Option[Charset]] =
     for {
@@ -619,7 +647,7 @@ object Parameters {
     }
 
     def entityClass: (Cursor, ValidationNel[SError, EntityClass]) = {
-      ???
+      RAISE.notImplementedYetDefect
     }
 
     def idForEntity: (Cursor, ValidationNel[SError, EntityId]) = {
@@ -651,7 +679,8 @@ object Parameters {
     private def _schema_in_binding(p: IRecord, name: String): Option[Any] =
       p.get(s"model.schema.$name") orElse p.get(s"model.voucher.$name")
 
-    def query(implicit context: QueryExpression.Context): (Cursor, ValidationNel[SError, Query]) = {
+    def query(implicit context: Query.Context): (Cursor, ValidationNel[SError, Query]) = {
+      implicit def qec = context.expression
       val query = parameters.arguments(0) match {
         case SQuery(s) => s
         case SString(s) => QueryFactory.unmarshall(s)
@@ -661,19 +690,36 @@ object Parameters {
         case m: SExpr => QueryFactory.unmarshall(m)
         case m => RAISE.invalidArgumentFault(s"Not query: $m")
       }
-      val r = Success(query).toValidationNel
+      val r = _update_query(query)
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
 
-    def queryDefault(implicit context: QueryExpression.Context): (Cursor, ValidationNel[SError, Query]) =
+    def queryDefault(implicit context: Query.Context): (Cursor, ValidationNel[SError, Query]) =
       if (parameters.isEmptyArguments) {
-        val r = Success(Query.all).toValidationNel
+        val r = _update_query(Query.all)
         val nextspec = spec // TODO
         to_result(nextspec, r)
       } else {
         query
       }
+
+    private def _update_query(p: Query)(implicit context: Query.Context): ValidationNel[SError, Query] = {
+      def _update_query_(
+        o: Option[Int],
+        l: Option[Int],
+        cs: Option[List[String]]
+      ): Query = {
+        val offset = o getOrElse 0
+        val limit = l.map(Query.Transfer.Limit.apply) getOrElse context.default.transferLimit
+        p.withOffsetLimit(offset, limit).withProjectionColumns(cs)
+      }
+
+      val poffset = parameters.fetchPropertyIntOption("offset")
+      val plimit = parameters.fetchPropertyIntOption("limit")
+      val columns = parameters.fetchPropertyStringListOption("columns")
+      (poffset |@| plimit |@| columns)(_update_query_)
+    }
 
     def record: (Cursor, ValidationNel[SError, Record]) = {
       val rec = parameters.argument1[Record](spec)

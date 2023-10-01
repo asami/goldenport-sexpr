@@ -16,12 +16,13 @@ import org.goldenport.sexpr._
  * @since   Apr. 20, 2019
  *  version Apr. 20, 2019
  *  version Aug.  2, 2019
- * @version Nov. 15, 2019
+ *  version Nov. 15, 2019
+ * @version Sep. 30, 2023
  * @author  ASAMI, Tomoharu
  */
 case class QueryFactory(
   config: RichConfig,
-  context: QueryExpression.Context
+  context: Query.Context
 ) {
   def unmarshall(p: String): Query = unmarshallValidation(p).valueOr(e => throw e.head)
 
@@ -60,20 +61,20 @@ case class QueryFactory(
 }
 
 object QueryFactory {
-  def default(implicit context: QueryExpression.Context) = QueryFactory(RichConfig.empty, context)
+  def default(implicit context: Query.Context) = QueryFactory(RichConfig.empty, context)
 
-  def unmarshall(p: String)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
-  def unmarshall(p: SExpr)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
-  def unmarshall(p: SJson)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
-  def unmarshall(p: SXml)(implicit context: QueryExpression.Context): Query = default.unmarshall(p)
+  def unmarshall(p: String)(implicit context: Query.Context): Query = default.unmarshall(p)
+  def unmarshall(p: SExpr)(implicit context: Query.Context): Query = default.unmarshall(p)
+  def unmarshall(p: SJson)(implicit context: Query.Context): Query = default.unmarshall(p)
+  def unmarshall(p: SXml)(implicit context: Query.Context): Query = default.unmarshall(p)
 
   object SExprQueryParser extends SExprParsers {
     import org.goldenport.record.v2.{Column, DataType, Multiplicity}
     import org.goldenport.record.sql.SqlDatatype
 
-    def parse(s: String)(implicit context: QueryExpression.Context): Query = parse(SExprParserNew(s))
+    def parse(s: String)(implicit context: Query.Context): Query = parse(SExprParserNew(s))
 
-    def parse(expr: SExpr)(implicit context: QueryExpression.Context): Query = expr match {
+    def parse(expr: SExpr)(implicit context: Query.Context): Query = expr match {
       case SNil => Query.all
       case m: SRecord => Query.create(m.record.toRecord)
       case m: SString => Query.create(m.string)

@@ -31,11 +31,13 @@ import Parameters.Cursor
  *  version Sep. 19, 2021
  *  version Apr.  9, 2022
  *  version Jul. 31, 2023
- * @version Aug.  1, 2023
+ *  version Aug.  1, 2023
+ * @version Sep. 30, 2023
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
-  implicit private val _query_context: QueryExpression.Context = sqlContext.queryContext
+  implicit private val _query_context: Query.Context = sqlContext.queryContext
+//  implicit private val _query_context: QueryExpression.Context = sqlContext.queryContext
 
   object param {
     def cursor(spec: FunctionSpecification) = Cursor(feature, spec, spec.resolve(parameters))

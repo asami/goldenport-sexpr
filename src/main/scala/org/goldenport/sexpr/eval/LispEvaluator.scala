@@ -7,6 +7,7 @@ import org.goldenport.context.DateTimeContext
 import org.goldenport.i18n.I18NContext
 import org.goldenport.parser.CommandParser
 import org.goldenport.record.v3.Record
+import org.goldenport.record.store.Query
 import org.goldenport.record.query.QueryExpression
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.chart.ChartFunction
@@ -47,7 +48,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Sep. 20, 2021
  *  version Nov. 29, 2021
  *  version Apr.  4, 2022
- * @version Jul. 17, 2023
+ *  version Jul. 17, 2023
+ * @version Sep. 30, 2023
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -55,7 +57,7 @@ trait LispEvaluator[C <: LispContext] extends Evaluator[C]
   def config: LispConfig
   def dateTimeContext: DateTimeContext
   def i18nContext: I18NContext
-  def queryContext: QueryExpression.Context
+  def queryContext: Query.Context
   def featureContext: FeatureContext
   protected def create_Eval_Context(): C = create_Eval_Context(SNil)
   protected def create_Eval_Context(x: SExpr): C = LispContext(
@@ -324,7 +326,7 @@ object LispEvaluator {
     p: LispConfig,
     datetimecontext: DateTimeContext,
     i18ncontext: I18NContext,
-    querycontext: QueryExpression.Context,
+    querycontext: Query.Context,
     featurecontext: FeatureContext
   ): LispEvaluator[LispContext] = new LispEvaluator[LispContext]() {
     val config = p
