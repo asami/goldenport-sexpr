@@ -13,7 +13,9 @@ import org.goldenport.sexpr._
  *  version Jan.  1, 2019
  *  version Feb. 25, 2019
  *  version May.  6, 2019
- * @version Oct.  1, 2019
+ *  version Oct.  1, 2019
+ *  version Sep. 10, 2024
+ * @version Oct.  1, 2024
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -33,6 +35,11 @@ class ScriptSpec extends WordSpec with Matchers with GivenWhenThen {
       val s = """:key"""
       val r = Script.parse(s)
       r should be(Script(SMetaCommand("key")))
+    }
+    "raw" in {
+      val s = """raw"\d""""
+      val r = Script.parse(s)
+      r should be(Script(SString("""\d""")))
     }
     "expression" in {
       val s = """(+ 1 1)"""

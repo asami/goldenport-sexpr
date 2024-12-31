@@ -55,7 +55,8 @@ import org.goldenport.value._
  *  version Nov.  6, 2022
  *  version Jul. 31, 2023
  *  version Aug.  4, 2023
- * @version Sep. 30, 2023
+ *  version Sep. 30, 2023
+ * @version Sep. 10, 2024
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -279,6 +280,8 @@ case class Parameters(
   def pop: Parameters = copy(argumentVector = argumentVector.tail)
 
   def pop(count: Int): Parameters = copy(argumentVector = argumentVector.take(count))
+
+  def addProperties(ps: Vector[(Symbol, SExpr)]) = copy(properties = properties append ps)
 
   def resolve(p: FunctionSpecification): Parameters = {
     // val paramnames = p.parameters.argumentNames

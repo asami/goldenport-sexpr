@@ -4,14 +4,15 @@ import org.goldenport.context.Consequence
 import org.goldenport.context.Showable
 import org.goldenport.record.v3.IRecord
 import org.goldenport.record.v3.Field
-import org.goldenport.statemachine.StateMachine
+import org.goldenport.sm.StateMachine
 import org.goldenport.sexpr.eval.LispContext
 
 /*
  * @since   Sep. 18, 2021
  *  version Oct. 31, 2021
  *  version Nov. 28, 2021
- * @version Aug.  6, 2023
+ *  version Aug.  6, 2023
+ * @version Sep.  6, 2024
  * @author  ASAMI, Tomoharu
  */
 trait EntityClass extends Showable {

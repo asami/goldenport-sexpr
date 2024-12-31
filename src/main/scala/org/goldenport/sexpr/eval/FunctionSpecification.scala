@@ -18,12 +18,14 @@ import org.goldenport.util.NumberUtils
  *  version Oct. 31, 2021
  *  version Aug. 31, 2022
  *  version Sep.  1, 2022
- * @version Nov.  6, 2022
+ *  version Nov.  6, 2022
+ * @version Sep. 10, 2024
  * @author  ASAMI, Tomoharu
  */
 case class FunctionSpecification(
   name: String,
-  signature: FunctionSpecification.Signature
+  signature: FunctionSpecification.Signature,
+  isQuote: Boolean = false
 ) {
   def numberOfRequiredArguments: Int = signature.numberOfRequiredArguments
 
@@ -45,6 +47,11 @@ case class FunctionSpecification(
     Option(e.getMessage).map(x => s"$label: $x").getOrElse(label)
 
   def resolve(p: Parameters): Parameters = {
+    val a = _resolve_property_argument(p)
+    _resolve_argument_property(a)
+  }
+
+  private def _resolve_property_argument(p: Parameters) = {
     case class Z(results: Vector[(Int, SExpr)] = Vector.empty) {
       def r: Parameters = {
         val a = results.sortBy(_._1)
@@ -98,6 +105,27 @@ case class FunctionSpecification(
       }
     }
     p.properties./:(Z())(_+_).r
+  }
+
+  private def _resolve_argument_property(p: Parameters) = {
+    case class Z(index: Int = 0, xs: Vector[(Symbol, SExpr)] = Vector.empty) {
+      def r = p.addProperties(xs)
+
+      def +(rhs: Parameters.Argument): Z = rhs match {
+        case Parameters.NamedArgument(key, value) =>
+          _set(key, value)
+        case Parameters.AnonArgument(value) =>
+          signature.parameters.arguments.lift(index) match {
+            case Some(s) => _set(Symbol(s.metadata.name), value)
+            case None => copy(index = index + 1)
+          }
+      }
+
+      private def _set(key: Symbol, value: SExpr) =
+        copy(index = index + 1, xs = xs :+ (key -> value))
+    }
+
+    p.argumentVector./:(Z())(_+_).r
   }
 }
 
@@ -194,6 +222,11 @@ object FunctionSpecification {
     def argumentOption(name: String, dt: DataType): Parameter =
       Parameter.Argument(Column(name, dt, MZeroOne))
 
+    def argumentVarargs(name: String): Parameter = argumentVarargs(name, XObject)
+
+    def argumentVarargs(name: String, dt: DataType): Parameter = 
+      Parameter.Argument(Parameter.VARIABLE_ARITY_ARGUMENT_NAME, dt)
+
     def propertyOption(name: String): Parameter =
       Parameter.Property(Column(name, XObject, MZeroOne))
 
@@ -202,7 +235,10 @@ object FunctionSpecification {
   }
 
   def apply(name: String, p: Parameter, ps: Parameter*): FunctionSpecification =
-    FunctionSpecification(name,Signature(Parameters(p, ps: _*)))
+    apply(name, Signature(Parameters(p, ps: _*)))
+
+  def apply(name: String, p: Parameters): FunctionSpecification =
+    FunctionSpecification(name, Signature(p))
 
   def apply(name: String): FunctionSpecification = apply(name, 0)
 
@@ -210,6 +246,8 @@ object FunctionSpecification {
     val a = (1 to numberofmeaningfulparameters).map(Parameter.argument)
     FunctionSpecification(name, Signature(Parameters(a.toList)))
   }
+
+  def quote(): FunctionSpecification = apply("quote", 1).copy(isQuote = true)
 
   def variableArityArgument(
     name: String,

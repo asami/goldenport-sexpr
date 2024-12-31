@@ -5,12 +5,14 @@ import org.scalatest.Matchers
 import org.scalatest.junit.JUnitRunner
 import org.junit.runner.RunWith
 import play.api.libs.json._
+import org.goldenport.collection.VectorMap
 import org.goldenport.sexpr._
 
 /*
  * @since   May.  3, 2019
  *  version May.  4, 2019
- * @version Jun. 19, 2021
+ *  version Jun. 19, 2021
+ * @version Sep.  7, 2024
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -22,7 +24,7 @@ class ParametersSpec extends WordSpec with Matchers with GivenWhenThen {
       val ps = Parameters(a)
       ps should be(Parameters(
         Vector(Parameters.Argument(SString("one")), Parameters.Argument(SString("two"))),
-        Map('type -> SString("string")),
+        VectorMap('type -> SString("string")),
         Set.empty
       ))
     }

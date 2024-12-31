@@ -1,14 +1,18 @@
 package org.goldenport.sexpr.script
 
 import scalaz._, Scalaz._
+import java.util.Currency
+import org.joda.time.DateTimeZone
 import org.goldenport.RAISE
 import org.goldenport.log.Loggable
+import org.goldenport.context.ContextFoundation
 import org.goldenport.parser._
 import org.goldenport.parser.XmlParser.XmlToken
 import org.goldenport.parser.JsonParser.JsonToken
 import org.goldenport.xsv.Lxsv
 import org.goldenport.record.v3._
 import org.goldenport.sexpr._
+import org.goldenport.util.CurrencyUtils
 
 /*
  * @since   Sep.  3, 2018
@@ -28,7 +32,9 @@ import org.goldenport.sexpr._
  *  version Apr. 21, 2021
  *  version Jun. 18, 2021
  *  version May.  8, 2022
- * @version Jul. 24, 2023
+ *  version Jul. 24, 2023
+ *  version Sep.  7, 2024
+ * @version Oct. 20, 2024
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -117,8 +123,14 @@ object Script {
     isDebug: Boolean = true,
     isLocation: Boolean = true,
     isMetaCommand: Boolean = true,
-    stringTokenizers: Vector[StringLiteralTokenizer] = Vector.empty
-  ) extends ParseConfig {
+    stringTokenizers: Vector[StringLiteralTokenizer] = Vector.empty,
+    contextFoundation: ContextFoundation = ContextFoundation.default
+  ) extends ParseConfig with ContextFoundation.Holder {
+    def currency: Currency = i18nContext.currency
+    def dateTimeZone: DateTimeZone = dateTimeContext.dateTimeZone
+
+    def withContextFoundation(p: ContextFoundation) = copy(contextFoundation = p)
+
     def addStringLiteralTokenizers(p: StringLiteralTokenizer, ps: StringLiteralTokenizer*): Config =
       addStringLiteralTokenizers(p +: ps)
 
@@ -241,25 +253,14 @@ object Script {
     protected def handle_Comment(config: Config, t: CommentToken): Transition = 
       (ParseMessageSequence.empty, ParseResult.empty, this)
 
+    // FUTURE merge SExpr#createFromLiteralToken
     protected def literal_State(config: Config, t: LiteralToken): ScriptParseState =
       t match {
-        case m: AtomToken =>
-          val name = m.name
-          val a = name.toLowerCase match {
-            case "nil" => SNil
-            case "t" => SBoolean.TRUE
-            case "true" => SBoolean.TRUE
-            case "false" => SBoolean.FALSE
-            case  _ => 
-              if (name.startsWith(":"))
-                SKeyword(name.substring(1))
-              else
-                SAtom(name)
-          }
-          add_Sexpr(config, a)
+        case m: AtomToken => add_Sexpr(config, SExpr.createFromAtomToken(m))
         case m: StringToken => add_Sexpr(config, _from_string(config, m))
         case m: BooleanToken => add_Sexpr(config, SBoolean(m.b))
         case m: NumberToken => add_Sexpr(config, SNumber(m.n))
+        case m: NumberPostfixToken => add_Sexpr(config, _from_number_postfix(config, m))
         case m: RationalToken => add_Sexpr(config, SRational(m.n)) // SNumber
         case m: ComplexToken => add_Sexpr(config, SComplex(m.n))
         case m: RangeToken => add_Sexpr(config, SRange(m.range))
@@ -303,7 +304,12 @@ object Script {
       p.prefix.map {
         case "s" => SList(SAtom("string-interpolate"), SString(p.text))
         case "f" => SList(SAtom("string-interpolate-format"), SString(p.text))
+        case "raw" => SString(p.text)
         case "record" => SRecord(_to_record(p.text))
+        case "table" => STable.createWithHeader(p.text)
+        case "table-data" => STable.createData(p.text)
+        case "table-side" => STable.createWithHeaderSide(p.text)
+        case "matrix" => SMatrix.create(None, p.text)
         case "lxsv" => SLxsv(Lxsv.create(p.text))
         case "regex" => SRegex(new scala.util.matching.Regex(p.text))
         case "xml" => SXml(p.text)
@@ -312,17 +318,20 @@ object Script {
         case "xsl" => SXsl(p.text)
         case "json" => SJson(p.text)
         case "pug" => SPug(p.text)
-        // case "datetime" => SDateTime(p.text)
-        // case "local-datetime" => SLocalDateTime(p.text)
-        // case "local-date" => SLocalDate(p.text)
-        // case "local-time" => SLocalTime(p.text)
-        // case "monthday" => SMonthDay(p.text)
-        // case "interval" => SInterval(p.text)
-        // case "duration" => SDuration(p.text)
-        // case "period" => SPeriod(p.text)
-        // case "currency" => SCurrency(p.text)
-        // case "percent" => SPercent(p.text)
-        // case "unit" => SUnit(p.text)
+        case "clob" => SClob(p.text)
+        case "blob" => SBlob.text(p.text)
+        case "query" => SQuery.create(p.text)
+        case "datetime" => SDateTime.create(config, p.text)
+        case "local-datetime" => SLocalDateTime.create(p.text)
+        case "local-date" => SLocalDate.create(p.text)
+        case "local-time" => SLocalTime.create(p.text)
+        case "monthday" => SMonthDay.create(p.text)
+        case "interval" => SInterval.create(p.text)
+        case "duration" => SDuration.create(p.text)
+        case "period" => SPeriod.create(p.text)
+        case "money" => _to_money(config, p.text)
+        case "percent" => _to_percent(config, p.text)
+        case "unit" => SUnit.create(p.text)
         case m => config.makeLiteral(m, p.text) getOrElse SError.syntaxError(s"""Unknown prefix: $m""")
       }.getOrElse(SString(p.text))
 
@@ -349,6 +358,45 @@ object Script {
         case m => Vector(m)
       }
       SVector(b)
+    }
+
+    private def _to_money(config: Config, p: String) = {
+      val c = LogicalTokens.Config.withoutLocation
+      val t = LogicalTokens.parse(c, p).makeToken
+      t match {
+        case m: NumberToken => SMoney.create(config, m.n)
+        case m: NumberPostfixToken => _from_number_postfix(config, m) match {
+          case m: SMoney => m
+          case m => SError.syntaxError(p)
+        }
+        case m => SError.syntaxError(p)
+      }
+    }
+
+    private def _from_number_postfix(config: Config, p: NumberPostfixToken) =
+      p.postfix match {
+        case "%" => SPercent(p.n)
+        case "¥" => SMoney.yen(p.n)
+        case "\\" => SMoney.yen(p.n)
+        case "円" => SMoney.yen(p.n)
+        case "$" => SMoney.dollar(p.n)
+        case "ドル" => SMoney.dollar(p.n)
+        case CurrencyUtils.SYMBOL_EURO_STRING => SMoney.euro(p.n)
+        case CurrencyUtils.SYMBOL_POUND_STRING => SMoney.pound(p.n)
+        case m => SNumberWithUnit.create(p.n, m)
+      }
+
+    private def _to_percent(config: Config, p: String) = {
+      val c = LogicalTokens.Config.withoutLocation
+      val t = LogicalTokens.parse(c, p).makeToken
+      t match {
+        case m: NumberToken => SPercent(m.n)
+        case m: NumberPostfixToken => _from_number_postfix(config, m) match {
+          case m: SPercent => m
+          case m => SError.syntaxError(p)
+        }
+        case m => SError.syntaxError(p)
+      }
     }
 
     def addChildTransition(config: Config, ps: Vector[SExpr], t: LogicalToken): Transition = 
@@ -618,7 +666,7 @@ object Script {
   ) extends ScriptParseState {
     override protected def handle_event(config: Config, token: LogicalToken): Transition =
       token match {
-        case EndToken => parent.addChildTransition(config, Vector(_path()), EndToken)
+        case EndToken => _return(config, EndToken)
         case m: PathToken => empty_transition(copy(tokens = tokens :+ m))
         case m: DelimiterToken => m.s match {
           case "(" => empty_transition(copy(tokens = tokens :+ token, count = count + 1))
@@ -627,10 +675,12 @@ object Script {
               parent.addChildTransition(config, Vector(_path()), token)
             else
               empty_transition(copy(tokens = tokens :+ token, count = count - 1))
-          case _ => empty_transition(copy(tokens = tokens :+ token))
+          case _ => _return(config, m)
         }
-        case _ => empty_transition(copy(tokens = tokens :+ token))
+        case _ => _return(config, token)
       }
+
+    private def _return(config: Config, p: LogicalToken) = parent.addChildTransition(config, Vector(_path()), p)
 
     private def _text = sexprs.map(_.asString).mkString ++ tokens.map(_.raw).mkString
 

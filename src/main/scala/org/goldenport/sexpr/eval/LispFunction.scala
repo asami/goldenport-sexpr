@@ -69,7 +69,9 @@ import LispContext.ResultWithIncident
  *  version Apr. 16, 2022
  *  version May.  6, 2022
  *  version Aug. 31, 2022
- * @version Jul. 17, 2023
+ *  version Jul. 17, 2023
+ *  version Sep.  8, 2024
+ * @version Oct.  8, 2024
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -447,6 +449,9 @@ trait CursorEvalFunction extends EvalFunction {
   protected final def param_argument_int_option(name: String): FunctionSpecification.Parameter =
     FunctionSpecification.Parameter.argumentOption(name, XInt)
 
+  protected final def param_argument_varargs(name: String): FunctionSpecification.Parameter =
+    FunctionSpecification.Parameter.argumentVarargs(name)
+
   protected final def param_property_option(name: String): FunctionSpecification.Parameter =
     FunctionSpecification.Parameter.propertyOption(name)
 
@@ -674,8 +679,17 @@ object LispFunction {
   }
 
   case object Quote extends ControlFunction {
-    val specification = FunctionSpecification("quote", 1)
-    def apply(p: LispContext) = p.toResult(p.parameters.arguments.head)
+    val specification = FunctionSpecification.quote()
+    def apply(p: LispContext) = {
+      val v: SExpr = p.getValue match {
+        case None => SNil
+        case Some(s) => s match {
+          case m: SList => m.list.lift(1) getOrElse SNil
+          case m => m
+        }
+      }
+      p.toResult(v)
+    }
   }
 
   case object Setq extends ControlFunction {
@@ -955,6 +969,21 @@ object LispFunction {
       val r = a.inv
       SMatrix(r)
     }
+  }
+
+  case object Regex extends CursorEvalFunction {
+    val specification = FunctionSpecification("regex",
+      param_argument("regex"),
+      param_argument_varargs("names")
+    )
+
+    def eval(u: LispContext): CursorResult = for {
+      regex <- u.param.argument1[String]
+      names <- u.param.argumentVarargs[String]
+    } yield (regex |@| names)(_regex(u))
+
+    private def _regex(u: LispContext)(regex: String, names: Seq[String]): SExpr =
+      SRegex.create(regex, names)
   }
 
   case object StringInterpolate extends ApplyFunction {
@@ -1730,7 +1759,7 @@ object LispFunction {
       val caption = u.parameters.properties.get('caption)
       val xpathpred = _xpathpred(caption)
       val strategy = u.parameters.properties.get('strategy).map { x =>
-        CreateHtmlStrategy.get(x).getOrElse(RAISE.invalidArgumentFault(s"Unkown strategy: $x"))
+        CreateHtmlStrategy.get(x).getOrElse(RAISE.invalidArgumentFault(s"Unknown strategy: $x"))
       }.getOrElse(CreateHtmlStrategy.NaturalStrategy)
       val r = table_make(u, a, xpathpred, strategy)
       u.toResult(r)

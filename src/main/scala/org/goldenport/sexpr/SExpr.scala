@@ -29,6 +29,7 @@ import org.goldenport.extension.IWindow
 import org.goldenport.extension.{IDocument => GDocument}
 import org.goldenport.extension.Showable
 import org.goldenport.matrix.{IMatrix, Matrix}
+import org.goldenport.xsv.Xsv
 import org.goldenport.record.v2.{Schema, Column, XDouble}
 import org.goldenport.record.v3.{IRecord, Record, ITable, Table, RecordSequence}
 import org.goldenport.record.http.{Request, Response}
@@ -49,6 +50,9 @@ import org.goldenport.parser.CommandParser
 import org.goldenport.xsv.Lxsv
 import org.goldenport.util.{StringUtils, AnyRefUtils, AnyUtils}
 import org.goldenport.util.DateTimeUtils
+import org.goldenport.util.LocalDateTimeUtils
+import org.goldenport.util.LocalDateUtils
+import org.goldenport.util.NumberUtils
 import org.goldenport.util.SpireUtils
 import org.goldenport.sexpr.eval.{LispContext, LispFunction, Incident, RestIncident}
 import org.goldenport.sexpr.eval.{InvariantIncident, PreConditionIncident, PreConditionStateIncident, PostConditionIncident}
@@ -105,7 +109,9 @@ import org.goldenport.sexpr.script.Script
  *  version Feb. 28, 2023
  *  version Apr. 22, 2023
  *  version Jul. 31, 2023
- * @version Aug.  5, 2023
+ *  version Aug.  5, 2023
+ *  version Oct. 23, 2024
+ * @version Nov.  2, 2024
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -343,30 +349,38 @@ case class SNumber(number: spire.math.Number) extends SExpr {
   def /(rhs: SNumber): SNumber = SNumber(number / rhs.number)
 }
 object SNumber {
-  val ZERO = SNumber(BigDecimal(0))
-  val ONE = SNumber(BigDecimal(1))
+  val ZERO = SNumber(SpireUtils.ZERO)
+  val ONE = SNumber(SpireUtils.ONE)
 
-  def apply(p: String): SNumber = SNumber(BigDecimal(p))
+  def apply(p: String): SNumber = SNumber(spire.math.Number(p))
   def apply(p: Int): SExpr = p match {
     case 0 => ZERO
     case 1 => ONE
-    case _ => SNumber(BigDecimal(p))
+    case _ => SNumber(spire.math.Number(p))
   }
   def apply(p: Long): SNumber = p match {
     case 0 => ZERO
     case 1 => ONE
-    case _ => SNumber(BigDecimal(p))
+    case _ => SNumber(spire.math.Number(p))
   }
   def apply(p: Float): SNumber = p match {
     case 0 => ZERO
     case 1 => ONE
-    case _ => SNumber(BigDecimal(p))
+    case _ => SNumber(spire.math.Number(p))
   }
   def apply(p: Double): SNumber = p match {
     case 0 => ZERO
     case 1 => ONE
-    case _ => SNumber(BigDecimal(p))
+    case _ => SNumber(spire.math.Number(p))
   }
+  def apply(p: Number): SNumber = SNumber(SpireUtils.toSpireNumber(p))
+}
+
+case class SNumberWithUnit(number: spire.math.Number, unit: SUnit) extends SExpr {
+}
+object SNumberWithUnit {
+  def create(n: Number, u: String): SNumberWithUnit =
+    SNumberWithUnit(SpireUtils.toSpireNumber(n), SUnit.create(u))
 }
 
 case class SRational(number: spire.math.Rational) extends SExpr {
@@ -421,6 +435,9 @@ case class SInterval(interval: NumberInterval) extends SExpr {
   override protected def print_String = interval.print
 
   def toRange: SRange = SRange(interval.toRange)
+}
+object SInterval {
+  def create(p: String): SInterval = SInterval(NumberInterval.take(p))
 }
 
 case class SString(string: String) extends SExpr {
@@ -663,10 +680,10 @@ object SError {
     SError(_internal_server_error.withMessage(p), None, None, Some(stdout), Some(stderr))
 
   def apply(ps: NonEmptyVector[SError]): SError = {
-    if (ps.tail.isEmpty)
+    if (ps.tailVector.isEmpty)
       ps.head
     else
-      SError(_internal_server_error, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
+      SError(_internal_server_error, None, Some(NonEmptyVector(ps.head, ps.tail.vector)))
   }
 
   def apply(c: Conclusion, s: String, params: Seq[SExpr]): SError =
@@ -864,6 +881,10 @@ object SRegex {
 }
 
 case class SClob(bag: ClobBag) extends SExpr {
+  override def equals(rhs: Any): Boolean = rhs match {
+    case SClob(r) => bag.isSame(r)
+    case _ => false
+  }
   override def pretty = SExpr.toFullPrettyGuess(bag.toString)
   override def getString = Some(bag.toText)
   override def titleInfo = bag.size.toString
@@ -877,6 +898,10 @@ object SClob {
 }
 
 case class SBlob(bag: BlobBag) extends SExpr {
+  override def equals(rhs: Any): Boolean = rhs match {
+    case SBlob(r) => bag.size == r.size && (bag.toByteArray sameElements r.toByteArray)
+    case _ => false
+  }
   override def pretty = bag.toTextTry.toOption.map(SExpr.toFullPrettyGuess).getOrElse(super.pretty)
   override def getString = bag.toTextTry.toOption
   override def titleInfo = bag.size.toString
@@ -950,7 +975,7 @@ case class SQuery(query: Query) extends SExpr {
 }
 object SQuery {
   def create(p: String): SQuery = {
-    val q = RAISE.notImplementedYetDefect
+    val q = Query.create(p)(Query.Context.now())
     SQuery(q)
   }
 }
@@ -1000,7 +1025,7 @@ case class STable(table: ITable) extends SExpr {
   def height = table.height
   def isEmpty = table.height == 0
   lazy val schema: SExpr = SSchema(table.schema)
-  def head: SExpr = _table.headOption.map(SRecord(_)).getOrElse(SNil)
+  def headRecord: SExpr = _table.headRecordOption.map(SRecord(_)).getOrElse(SNil)
   def tail: STable = STable(_table.tail)
   def ensureHead: STable = STable(_table.ensureHead)
   def list: SList = SList.create(_vector)
@@ -1017,7 +1042,112 @@ case class STable(table: ITable) extends SExpr {
   def toRecordSequence: RecordSequence = RecordSequence(table.toRecordVector)
 }
 object STable {
-  def data(ps: Seq[Record]): STable = RAISE.notImplementedYetDefect
+  val empty = STable(Table.empty)
+
+  def data(ps: Seq[Record]): STable = {
+    val t = Table.create(ps)
+    val a: IMatrix[Table.Cell] = t.matrix.map(_to_sexpr_cell)
+    val header = t.head
+    STable(Table.create(a, header))
+  }
+
+  def create(p: IMatrix[Any]): STable = {
+    val a = p.map(_to_sexpr_cell)
+    STable(Table.createFromAnyMatrix(p))
+  }
+
+  def createFromStringMatrix(p: IMatrix[String]): STable =
+    create(p.asInstanceOf[IMatrix[Any]])
+
+  def createFromTokenMatrix(p: IMatrix[LogicalToken]): STable = {
+    val a = p.map(_token_to_sexpr_cell)
+    STable(Table.create(a))
+  }
+
+  def createFromTokenMatrixWithHeader(p: IMatrix[LogicalToken]): STable =
+    p.headOption.fold(STable.empty) { h =>
+      val header = h.map(_.print)
+      val t = p.tail
+      val a = t.map(_token_to_sexpr_cell)
+      STable(Table.create(a, header))
+    }
+
+  def createEager(p: IMatrix[Any]): STable = {
+    val a = p.map(_to_sexpr_cell_eager)
+    STable(Table.create(a))
+  }
+
+  def createEagerFromStringMatrix(p: IMatrix[String]): STable =
+    createEager(p.asInstanceOf[IMatrix[Any]])
+
+  def createEagerFromTokenMatrix(p: IMatrix[LogicalToken]): STable = {
+    val a = p.map(_token_to_sexpr_cell_eager)
+    STable(Table.create(a))
+  }
+
+  private def _to_sexpr_cell(p: Any): Table.Cell = {
+    val a = SExpr.create(p)
+    Table.Cell(a.asObject, a)
+  }
+
+  private def _to_sexpr_cell_eager(p: Any): Table.Cell = {
+    val a = SExpr.createEager(p)
+    Table.Cell(a.asObject, a)
+  }
+
+  private def _token_to_sexpr_cell(p: LogicalToken): Table.Cell = {
+    val a = SExpr.createFromToken(p)
+    Table.Cell(a.asObject, a)
+  }
+
+  private def _token_to_sexpr_cell_eager(p: LogicalToken): Table.Cell = {
+    val a = SExpr.createEagerFromToken(p)
+    Table.Cell(a.asObject, a)
+  }
+
+  def createData(p: String): STable = _from_string(p)
+
+  def createWithHeader(p: String): STable = _from_string_header(p)
+
+  def createWithHeaderSide(p: String): STable = ???
+
+  private def _from_string(p: String) = {
+    val s = p.trim
+    s.headOption.fold(_from_xsv(p)){
+      case '{' => _from_json(p)
+      case '<' => _from_xml(p)
+      case _ => _from_xsv(p)
+    }
+  }
+
+  private def _from_json(p: String): STable = ???
+
+  private def _from_xml(p: String): STable = ???
+
+  private def _from_xsv(p: String): STable = {
+    val r = for {
+      lines <- Consequence(LogicalLines.parse(p))
+      xsv <- Consequence(Xsv.parse(lines))
+    } yield STable.createFromTokenMatrix(xsv.matrix)
+    r.take
+  }
+
+  private def _from_string_header(p: String) = {
+    val s = p.trim
+    s.headOption.fold(_from_xsv(p)){
+      case '{' => _from_json(p)
+      case '<' => _from_xml(p)
+      case _ => _from_xsv_header(p)
+    }
+  }
+
+  private def _from_xsv_header(p: String): STable = {
+    val r = for {
+      lines <- Consequence(LogicalLines.parse(p))
+      xsv <- Consequence(Xsv.parse(lines))
+    } yield STable.createFromTokenMatrixWithHeader(xsv.matrix)
+    r.take
+  }
 }
 
 case class SVector(vector: Vector[SExpr]) extends SExpr {
@@ -1127,7 +1257,8 @@ object SMatrix {
     SMatrix(e)
   }
 
-  def data(ps: Seq[Seq[Double]]): SMatrix = RAISE.notImplementedYetDefect
+  def data(ps: Seq[Seq[Double]]): SMatrix =
+    SMatrix(VectorRowColumnMatrix.create(ps))
 }
 
 case class SDataFrame(dataframe: IDataFrame) extends SExpr {
@@ -1294,14 +1425,13 @@ case class SSingleQuote() extends SExpr {
   // def show = "SingleQuote()"
 }
 
-// obsolated by SObject
-case class SBean(o: AnyRef) extends SExpr { // JavaBeans or Java Object
+case class SBean(o: AnyRef) extends SExpr { // JavaBeans
   override def getString = Some(o.toString)
   // def print = show
   // def show = o.toString
 }
 
-case class SObject(o: AnyRef) extends SExpr { // JavaBeans or Java Object
+case class SObject(o: AnyRef) extends SExpr { // Java Object
   override def getString = Some(o.toString)
   // def print = show
   // def show = o.toString
@@ -1557,6 +1687,11 @@ case class HoconSHocon(hocon: Hocon) extends SHocon {
 }
 
 case class SDateTime(datetime: DateTime) extends SExpr {
+  override def equals(p: Any): Boolean = p match {
+    case m: SDateTime => m.datetime equals datetime
+    case _ => false
+  }
+
   override def asObject = datetime
 //  override def asJavaObject = new java.time.ZonedDateTime() // Java 8
   override def asJavaObject = datetime.toCalendar(Locale.US)
@@ -1566,9 +1701,15 @@ case class SDateTime(datetime: DateTime) extends SExpr {
 }
 object SDateTime {
   import DateTimeUtils.jodajst
+  import DateTimeUtils.jodaplus900
+
+  def create(config: Script.Config, p: String): SDateTime = SDateTime(DateTimeUtils.parseDateTime(p, config.dateTimeZone))
 
   def jst(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): SDateTime =
     SDateTime(new DateTime(year, month, day, hour, minute, second, jodajst))
+
+  def plus900(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): SDateTime =
+    SDateTime(new DateTime(year, month, day, hour, minute, second, jodaplus900))
 }
 
 case class SLocalDateTime(datetime: LocalDateTime) extends SExpr {
@@ -1582,6 +1723,8 @@ case class SLocalDateTime(datetime: LocalDateTime) extends SExpr {
 object SLocalDateTime {
   def apply(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): SLocalDateTime =
     SLocalDateTime(new LocalDateTime(year, month, day, hour, minute, second))
+
+  def create(p: String): SLocalDateTime = SLocalDateTime(LocalDateTimeUtils.parse(p))
 }
 
 case class SLocalDate(date: LocalDate) extends SExpr {
@@ -1592,6 +1735,8 @@ case class SLocalDate(date: LocalDate) extends SExpr {
 }
 object SLocalDate {
   def apply(y: Int, m: Int, d: Int): SLocalDate = SLocalDate(new LocalDate(y, m, d))
+
+  def create(p: String): SLocalDate = SLocalDate(LocalDateUtils.parse(p))
 }
 
 case class SLocalTime(time: LocalTime) extends SExpr {
@@ -1602,6 +1747,8 @@ case class SLocalTime(time: LocalTime) extends SExpr {
 }
 object SLocalTime {
   def apply(h: Int, m: Int, s: Int): SLocalTime = SLocalTime(new LocalTime(h, m, s))
+
+  def create(p: String): SLocalTime = SLocalTime(LocalTime.parse(p))
 }
 
 case class SMonthDay(monthday: MonthDay) extends SExpr {
@@ -1615,6 +1762,8 @@ case class SMonthDay(monthday: MonthDay) extends SExpr {
 }
 object SMonthDay {
   def apply(m: Int, d: Int): SMonthDay = SMonthDay(new MonthDay(m, d))
+
+  def create(p: String): SMonthDay = SMonthDay(MonthDay.parse(p))
 }
 
 /*
@@ -1664,7 +1813,7 @@ object SDuration {
 
   def create(p: String): SDuration = parse(p).take
 
-  def hour(h: Int): SDuration = SDuration(DurationUtils.hour(h))
+  def hour(h: Int): SDuration = SDuration(DurationUtils.hour(h), Some(s"DT${h}H"))
 }
 
 /*
@@ -1687,6 +1836,8 @@ object SPeriod {
   def create(p: String): SPeriod = parse(p).take
 
   def yearMonthDay(y: Int, m: Int, d: Int): SPeriod = SPeriod(PeriodUtils.yearMonthDay(y, m, d))
+
+  def day(d: Int): SPeriod = SPeriod(PeriodUtils.day(d))
 }
 
 case class SImage(binary: BlobBag) extends SExpr {
@@ -1712,8 +1863,19 @@ case class SMoney(money: Money) extends SExpr {
   // def show = currency.toString
 }
 object SMoney {
-  def doller(p: Int): SMoney = RAISE.notImplementedYetDefect
-  def yen(p: Int): SMoney = RAISE.notImplementedYetDefect
+  def create(config: Script.Config, p: Number): SMoney =
+    SMoney(Money(config.currency, NumberUtils.toBigDecimal(p)))
+
+  def dollar(p: Number): SMoney = SMoney(Money.dollar(p))
+  def dollar(p: Int): SMoney = SMoney(Money.dollar(p))
+  def yen(p: Number): SMoney = SMoney(Money.yen(p))
+  def yen(p: Int): SMoney = SMoney(Money.yen(p))
+  def pound(p: Int): SMoney = SMoney(Money.pound(p))
+  def pound(p: Number): SMoney = SMoney(Money.pound(p))
+  def euro(p: Int): SMoney = SMoney(Money.euro(p))
+  def euro(p: Number): SMoney = SMoney(Money.euro(p))
+  def swissfranc(p: Int): SMoney = SMoney(Money.swissfranc(p))
+  def swissfranc(p: Number): SMoney = SMoney(Money.swissfranc(p))
 }
 
 case class SPercent(percent: Percent) extends SExpr {
@@ -1723,13 +1885,17 @@ case class SPercent(percent: Percent) extends SExpr {
   // def show = percent.toString
 }
 object SPercent {
-  def apply(p: Double): SPercent = RAISE.notImplementedYetDefect
+  def apply(p: Double): SPercent = SPercent(Percent(p))
+  def apply(p: Number): SPercent = SPercent(Percent(p))
 }
 
 case class SUnit(unit: String) extends SExpr {
   override def getString = Some(unit)
   // def print = show
   // def show = unit
+}
+object SUnit extends {
+  def create(p: String): SUnit = SUnit(p)
 }
 
 case class SChart(
@@ -2043,9 +2209,12 @@ object SExpr {
     case m: Hocon => SHocon(m)
     case m: LogicalToken => SExprParserNew.parse(m)
     case m: Throwable => SError(m)
-    case m: AnyRef => SBean(m)
-    case m => SBean(AnyRefUtils.toAnyRef(m))
+    case m: AnyRef if is_bean(m) => SBean(m)
+    case m: AnyRef => SObject(m)
+    case m => SObject(AnyRefUtils.toAnyRef(m))
   }
+
+  protected final def is_bean(p: AnyRef) = false // FUTURE
 
   private def _create_seq(p: Seq[Any]): SExpr =
     if (p.isEmpty)
@@ -2072,6 +2241,75 @@ object SExpr {
     case BinaryCreate => RAISE.notImplementedYetDefect
   }
 
+  // See Script.ScriptParseState.literal_State
+  def createFromToken(p: LogicalToken): SExpr = p match {
+    case m: LiteralToken => createFromLiteralToken(m)
+    case m: EmptyToken => create(m.value)
+    case m: SpaceToken => create(m.value)
+    case m: DelimiterToken => create(m.value)
+    case m: CommentToken => create(m.value)
+    case m: SingleQuoteToken => create(m.value)
+    case EndToken => SNil
+  }
+
+  def createFromLiteralToken(p: LiteralToken): SExpr = p match {
+    case m: AtomToken => createFromAtomToken(m)
+    case m: StringToken => createFromStringToken(m)
+    case m: BooleanToken => SBoolean(m.value)
+    case m: NumberToken => SNumber(m.value)
+    case m: NumberPostfixToken => createFromNumberPostfixToken(m)
+    case m: ComplexToken => SComplex(m.value)
+    case m: RationalToken => SRational(m.value)
+    case m: RangeToken => SRange(m.value)
+    case m: IntervalToken => SInterval(m.value)
+    case m: DateTimeToken => SDateTime(m.value)
+    case m: LocalDateTimeToken => SLocalDateTime(m.value)
+    case m: LocalDateToken => SLocalDate(m.value)
+    case m: LocalTimeToken => SLocalTime(m.value)
+    case m: MonthDayToken => SMonthDay(m.value)
+    case m: PeriodToken => SPeriod(m.value)
+    case m: DurationToken => SDuration(m.value)
+    case m: DateTimeIntervalToken => SDateTimeInterval(m.value)
+    case m: LocalDateTimeIntervalToken => SLocalDateTimeInterval(m.value)
+    case m: UrlToken => SUrl(m.value)
+    case m: UrnToken => SUrn(m.value)
+    case m: UriToken => SUri(m.value)
+    case m: PathToken => createFromPathToken(m)
+    case m: ExpressionToken => SExpression(m.value)
+    case m: XsvToken => SXsl(m.value)
+    case m: LxsvToken => SLxsv(m.value)
+    case m: BracketToken => SExpr.create(m.value)
+    case m: DoubleBracketToken => SExpr.create(m.value)
+    case m: RawBracketToken => SExpr.create(m.value)
+    case m: ScriptToken => SExpr.create(m.value)
+    case m: ExplicitLiteralToken => SExpr.create(m.value)
+    case m: ExternalLogicalToken => create(m.value)
+  }
+
+  def createFromAtomToken(p: AtomToken): SExpr = {
+    val name = p.name
+    name.toLowerCase match {
+      case "nil" => SNil
+      case "t" => SBoolean.TRUE
+      case "true" => SBoolean.TRUE
+      case "false" => SBoolean.FALSE
+      case  _ =>
+        if (name.startsWith(":"))
+          SKeyword(name.substring(1))
+        else
+          SAtom(name)
+    }
+  }
+
+  def createFromStringToken(p: StringToken): SExpr = p.prefix match {
+    case Some(prefix) => ???
+    case None => SString(p.value)
+  }
+
+  def createFromNumberPostfixToken(p: NumberPostfixToken): SExpr = ???
+
+  def createFromPathToken(p: PathToken): SExpr = SXPath(p.path)
+
   def createAuto(p: String): SExpr = p.headOption.collect {
     case '<' => createXmlFamilyOption(p)
     case '{' => SJson.createOption(p)
@@ -2093,6 +2331,26 @@ object SExpr {
     case m: SUri => createAuto(m)
     case m => m
   }
+
+  def createEager(p: Any): SExpr = p match {
+    case m: SExpr => m
+    case m: String => _create_eager(m)
+    case m => create(m)
+  }
+
+  def createEagerFromToken(p: LogicalToken): SExpr = p match {
+    case m: StringToken => createEagerFromStringToken(m)
+    case m => createFromToken(m)
+  }
+
+  def createEagerFromLiteralToken(p: LogicalToken): SExpr = createEagerFromToken(p)
+
+  def createEagerFromStringToken(p: StringToken): SExpr = p.prefix match {
+    case Some(prefix) => ???
+    case None => _create_eager(p.text)
+  }
+
+  private def _create_eager(p: String): SExpr = SExprParserNew.apply(p)
 
   def run[T <: SExpr](p: => Consequence[T]): SExpr = try {
     p match {

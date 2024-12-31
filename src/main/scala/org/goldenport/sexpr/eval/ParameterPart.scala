@@ -32,7 +32,8 @@ import Parameters.Cursor
  *  version Apr.  9, 2022
  *  version Jul. 31, 2023
  *  version Aug.  1, 2023
- * @version Sep. 30, 2023
+varargs *  version Sep. 30, 2023
+varargs * @version Sep.  8, 2024
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -57,6 +58,8 @@ trait ParameterPart { self: LispContext =>
     def argumentNonEmptyVector[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, NonEmptyVector[A]]](_.argumentNonEmptyVector)
 
     def argument1[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, A]](_.argument1)
+
+    def argumentVarargs[A](implicit a: SExprConverter[A]) = State[Cursor, ValidationNel[SError, List[A]]](_.argumentList)
 
     def storeCollection = State[Cursor, ValidationNel[SError, Collection]](_.storeCollection)
 

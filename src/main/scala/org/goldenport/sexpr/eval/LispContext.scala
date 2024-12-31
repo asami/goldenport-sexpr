@@ -27,7 +27,7 @@ import org.goldenport.bag.ChunkBag
 import org.goldenport.record.v2.bag.{CsvBag, ExcelBag, RecordBag}
 import org.goldenport.incident.{Incident => LibIncident}
 import org.goldenport.matrix.INumericalOperations
-import org.goldenport.statemachine.{ExecutionContext => StateMachineContext}
+import org.goldenport.sm.{ExecutionContext => StateMachineContext}
 import org.goldenport.sexpr._
 import org.goldenport.sexpr.eval.entity.EntityFactory
 import LispContext.ResultWithIncident
@@ -58,7 +58,8 @@ import LispContext.ResultWithIncident
  *  version Nov. 28, 2021
  *  version Apr. 24, 2022
  *  version Jul. 17, 2023
- * @version Sep. 30, 2023
+ *  version Sep. 30, 2023
+ * @version Sep.  6, 2024
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart

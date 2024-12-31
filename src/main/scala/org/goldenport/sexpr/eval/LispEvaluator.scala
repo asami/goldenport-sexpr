@@ -49,7 +49,8 @@ import org.goldenport.sexpr.eval.spark.SparkFunction
  *  version Nov. 29, 2021
  *  version Apr.  4, 2022
  *  version Jul. 17, 2023
- * @version Sep. 30, 2023
+ *  version Sep. 30, 2023
+ * @version Sep.  8, 2024
  * @author  ASAMI, Tomoharu
  */
 trait LispEvaluator[C <: LispContext] extends Evaluator[C]
@@ -365,6 +366,7 @@ trait LispBinding[C <: LispContext] extends Binding[C] {
       Plus, Minus, Multify, Divide,
       Length,
       Inv,
+      Regex,
       StringInterpolate, StringInterpolateFormat, StringFormat, StringMessage, StringMessageKey,
       PathGet, Transform, Xslt, Select,
       Fetch, Retry, Sh, Load, Save,

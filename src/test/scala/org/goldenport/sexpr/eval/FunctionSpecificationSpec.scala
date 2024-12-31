@@ -8,13 +8,13 @@ import org.goldenport.sexpr._
 
 /*
  * @since   Jun. 19, 2021
- * @version Jun. 19, 2021
+ * @version Sep.  7, 2024
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
 class FunctionSpecificationSpec extends WordSpec with Matchers with GivenWhenThen {
   protected final def param_argument(name: String): FunctionSpecification.Parameter =
-    FunctionSpecification.Parameter(name, true)
+    FunctionSpecification.Parameter.argument(name)
 
   protected final def param_argument_option(name: String): FunctionSpecification.Parameter =
     FunctionSpecification.Parameter.argumentOption(name)
