@@ -59,7 +59,8 @@ import LispContext.ResultWithIncident
  *  version Apr. 24, 2022
  *  version Jul. 17, 2023
  *  version Sep. 30, 2023
- * @version Sep.  6, 2024
+ *  version Sep.  6, 2024
+ * @version Feb.  2, 2025
  * @author  ASAMI, Tomoharu
  */
 trait LispContext extends EvalContext with ParameterPart with TracePart
@@ -82,7 +83,7 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
 
   def locale = i18nContext.locale
 
-  def isPolicyIoAsync: Boolean = true // TODO false
+  def isPolicyIoAsync: Boolean = false // TODO Customize
 
   def takeResourceHandle(p: ResourceLocator): ResourceHandle = resourceManager.takeHandle(p)
   def takeResourceHandle(p: URI): ResourceHandle = resourceManager.takeHandle(p)
@@ -159,7 +160,10 @@ trait LispContext extends EvalContext with ParameterPart with TracePart
     r.value
   }
 
-  def apply(expr: SExpr): LispContext = toResult(eval(expr))
+  def apply(expr: SExpr): LispContext = {
+    val r = evaluator(pure(expr))
+    toResult(r.value, r.incident)
+  }
 
   def evalCondition(predicate: SExpr, value: SExpr): Boolean = {
     val s = SList(predicate, value)
