@@ -2,9 +2,9 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "2.1.1"
+version := "2.2.0"
 
-scalaVersion := "2.10.3"
+scalaVersion := "2.12.18"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")
 
 scalacOptions += "-feature"
@@ -33,13 +33,13 @@ resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.4.8"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "2.2.1"
 
-libraryDependencies += "org.goldenport" %% "goldenport-record" % "1.4.0"
+libraryDependencies += "org.goldenport" %% "goldenport-record" % "2.2.0"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3" % "compile"
 
-libraryDependencies += "com.typesafe.play" %% "play-json" % "2.2.2" % "compile"
+libraryDependencies += "com.typesafe.play" %% "play-json" % "2.6.10" % "compile"
 
 libraryDependencies += "commons-jxpath" % "commons-jxpath" % "1.3" % "compile"
 
@@ -57,9 +57,9 @@ libraryDependencies += "com.amazonaws" % "aws-java-sdk" % "1.11.519" % "compile"
 
 libraryDependencies += "com.amazonaws" % "aws-java-sdk" % "1.11.519" % "compile"
 
-libraryDependencies += "org.apache.spark" %% "spark-core" % "2.2.3" % "compile" exclude("org.glassfish.hk2", "hk2-utils") exclude("org.glassfish.hk2", "hk2-locator") exclude("javax.validation", "validation-api") exclude("org.slf4j", "slf4j-log4j12") // Use old version for Scala 2.10
+libraryDependencies += "org.apache.spark" %% "spark-core" % "3.5.5" % "compile" exclude("org.glassfish.hk2", "hk2-utils") exclude("org.glassfish.hk2", "hk2-locator") exclude("javax.validation", "validation-api") exclude("org.slf4j", "slf4j-log4j12") // Use old version for Scala 2.10
 
-libraryDependencies += "org.apache.spark" %% "spark-sql" % "2.2.3" % "compile" exclude("org.glassfish.hk2", "hk2-utils") exclude("org.glassfish.hk2", "hk2-locator") exclude("javax.validation", "validation-api") exclude("org.slf4j", "slf4j-log4j12") // Use old version for Scala 2.10
+libraryDependencies += "org.apache.spark" %% "spark-sql" % "3.5.5" % "compile" exclude("org.glassfish.hk2", "hk2-utils") exclude("org.glassfish.hk2", "hk2-locator") exclude("javax.validation", "validation-api") exclude("org.slf4j", "slf4j-log4j12") // Use old version for Scala 2.10
 
 libraryDependencies += "junit" % "junit" % "4.10" % "test"
 
