@@ -2,7 +2,7 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "2.1.0"
+version := "2.1.1"
 
 scalaVersion := "2.10.3"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")
@@ -27,11 +27,13 @@ resolvers += "GitHab releases 2023" at "https://raw.github.com/asami/maven-repos
 
 resolvers += "GitHab releases" at "https://raw.github.com/asami/maven-repository/2024/releases"
 
+resolvers += "GitHub Packages" at "https://maven.pkg.github.com/asami/maven-repository"
+
 resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.4.0"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "1.4.8"
 
 libraryDependencies += "org.goldenport" %% "goldenport-record" % "1.4.0"
 
@@ -64,10 +66,10 @@ libraryDependencies += "junit" % "junit" % "4.10" % "test"
 libraryDependencies += "org.scalatest" %% "scalatest" % "2.0" % "test"
 
 //
-val mavenrepo = settingKey[String]("mavenrepo")
+publishTo := Some(
+  "GitHub Packages" at "https://maven.pkg.github.com/asami/maven-repository"
+)
 
-mavenrepo := sys.env.getOrElse("PUBLISH_MAVEN_REPO", default = "target/maven-repository")
+credentials += Credentials(Path.userHome / ".sbt" / ".credentials")
 
-publishTo <<= mavenrepo { v: String =>
-  Some(Resolver.file("file", file(v)))
-}
+publishMavenStyle := true
