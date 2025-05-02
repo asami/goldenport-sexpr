@@ -219,7 +219,7 @@ case class Parameters(
     fetchPropertyIntOption(Symbol(p))
 
   def fetchPropertyIntOption(p: Symbol): ValidationNel[SError, Option[Int]] = {
-    def _success_(n: Int) = Success(n).toValidationNel
+    def _success_(n: Int): ValidationNel[SError, Int] = Success(n).toValidationNel
     def _error_(e: SExpr) = Failure(SError.invalidDatatype(p.name, e)).toValidationNel
 
     fetch_property_option(p) {
@@ -579,7 +579,7 @@ object Parameters {
       parameters.arguments match {
         case Nil => to_error(spec, SError.notFound("empty"))
         case x :: xs => 
-          val r = Success(x).toValidationNel
+          val r: ValidationNel[SError, SExpr] = Success(x).toValidationNel
           val nextspec = spec // TODO
           to_result_pop(nextspec, r)
       }
@@ -635,7 +635,7 @@ object Parameters {
 
     def idForStore: (Cursor, ValidationNel[SError, Id]) = {
       val id = parameters.argument1[String](spec)
-      val r = Success(Id.create(id)).toValidationNel
+      val r = Id.create(id).successNel[SError]
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
@@ -655,27 +655,27 @@ object Parameters {
 
     def idForEntity: (Cursor, ValidationNel[SError, EntityId]) = {
       val id = parameters.argument1[String](spec)
-      val r = Success(feature.entity.createId(id)).toValidationNel
+      val r = feature.entity.createId(id).successNel[SError]
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
 
     def schema(p: LispContext): (Cursor, ValidationNel[SError, Schema]) = {
-      val r = parameters.arguments(0) match {
+      val r: ValidationNel[SError, Schema] = parameters.arguments(0) match {
         case SString(name) => _schema(p, name)
         case SAtom(name) => _schema(p, name)
-        case m: SSchema => Success(m.schema).toValidationNel
-        case m: Schema => Success(m).toValidationNel
+        case m: SSchema => m.schema.successNel[SError]
+        case m: Schema => m.successNel[SError]
         case m => RAISE.notImplementedYetDefect(s"Parameters#schema: $m")
       }
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
 
-    private def _schema(p: LispContext, name: String) =
+    private def _schema(p: LispContext, name: String): ValidationNel[SError, Schema] =
       p.bindings.get(name).orElse(_schema_in_binding(p.bindings, name)).map {
-        case m: SSchema => Success(m.schema).toValidationNel
-        case m: Schema => Success(m).toValidationNel
+        case m: SSchema => m.schema.successNel[SError]
+        case m: Schema => m.successNel[SError]
         case m => RAISE.notImplementedYetDefect
       }.getOrElse(RAISE.notImplementedYetDefect)
 
@@ -726,7 +726,7 @@ object Parameters {
 
     def record: (Cursor, ValidationNel[SError, Record]) = {
       val rec = parameters.argument1[Record](spec)
-      val r = Success(rec).toValidationNel
+      val r = rec.successNel[SError]
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
@@ -791,7 +791,7 @@ object Parameters {
       }
       val z = parameters.arguments./:(Z())(_+_)
       val rs = z.records
-      val r = Success(rs).toValidationNel
+      val r = rs.successNel[SError]
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
@@ -805,14 +805,14 @@ object Parameters {
         case SUri(uri) => u.loadTable(uri)
         case m => RAISE.invalidArgumentFault(s"Not table: $m")
       }
-      val r = Success(t).toValidationNel
+      val r = t.successNel[SError]
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }
 
     def tableHeader(u: LispContext): (Cursor, ValidationNel[SError, Option[Table.HeaderStrategy]]) = {
       val x = parameters.tableHeader
-      val r = Success(x).toValidationNel
+      val r = x.successNel[SError]
       val nextspec = spec // TODO
       to_result(nextspec, r)
     }
@@ -885,7 +885,7 @@ object Parameters {
      * Property
      */
     def take(key: Symbol): (Cursor, ValidationNel[SError, SExpr]) = {
-      val r = parameters.getProperty(key) match {
+      val r: ValidationNel[SError, SExpr] = parameters.getProperty(key) match {
         case Some(s) => Success(s).toValidationNel
         case None => Failure(SError.missingArgumentFault(key.name)).toValidationNel
       }
@@ -895,7 +895,7 @@ object Parameters {
 
     def get(key: Symbol): (Cursor, ValidationNel[SError, Option[SExpr]]) = {
       val x = parameters.getProperty(key)
-      val r = Success(x).toValidationNel
+      val r = x.successNel[SError]
       val nextspec = spec // TODO
       to_result(nextspec, r)
     }
@@ -913,28 +913,28 @@ object Parameters {
 
     def getString(key: Symbol): (Cursor, ValidationNel[SError, Option[String]]) = {
       val x = parameters.getPropertyString(key)
-      val r = Success(x).toValidationNel
+      val r = x.successNel[SError]
       val nextspec = spec // TODO
       to_result(nextspec, r)
     }
 
     def getStringStrict(key: Symbol): (Cursor, ValidationNel[SError, Option[String]]) = {
       val x = parameters.getPropertyStringStrict(key)
-      val r = Success(x).toValidationNel
+      val r = x.successNel[SError]
       val nextspec = spec // TODO
       to_result(nextspec, r)
     }
 
     def getInt(key: Symbol): (Cursor, ValidationNel[SError, Option[Int]]) = {
       val x = parameters.getPropertyInt(key)
-      val r = Success(x).toValidationNel
+      val r = x.successNel[SError]
       val nextspec = spec // TODO
       to_result_pop(nextspec, r) // TODO to_result
     }
 
     def propertyStringList(key: Symbol): (Cursor, ValidationNel[SError, List[String]]) = {
       val x = parameters.getPropertyStringList(key)
-      val r = Success(x).toValidationNel
+      val r = x.successNel[SError]
       val nextspec = spec // TODO
       to_result_pop(nextspec, r)
     }

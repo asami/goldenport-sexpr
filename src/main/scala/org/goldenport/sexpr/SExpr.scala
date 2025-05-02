@@ -672,7 +672,7 @@ object SError {
   // def apply(p: Response): SError = SError(None, None, None, Some(p), None)
   def apply(i: Incident): SError = SError(_internal_server_error, Some(i))
   def apply(label: String, i: Incident): SError = SError(_internal_server_error.withMessage(label), Some(i))
-  def apply(ps: NonEmptyList[SError]): SError = ps.list match {
+  def apply(ps: NonEmptyList[SError]): SError = ps.list.toList match {
     case x :: Nil => x
     case _ => SError(ps.head.conclusion, None, Some(NonEmptyVector(ps.head, ps.tail.toVector)))
   }
