@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import scala.collection.JavaConverters._
 import javax.script._
 import org.apache.commons.jexl3.scripting.JexlScriptEngineFactory
+import org.goldenport.log.Slf4jLogHandler
 import org.goldenport.record.v3.IRecord
 import org.goldenport.python.JepPythonEngineFactory
 import org.goldenport.sexpr._
@@ -10,7 +11,8 @@ import org.goldenport.sexpr._
 /*
  * @since   Sep.  1, 2019
  *  version Sep. 29, 2019
- * @version Nov. 28, 2019
+ *  version Nov. 28, 2019
+ * @version May. 10, 2025
  * @author  ASAMI, Tomoharu
  */
 case class ScriptEngineContext(
@@ -39,12 +41,15 @@ case class ScriptEngineContext(
     createEngineOption(name, bindings.toMap)
 
   def createEngineOption(name: String, bindings: Map[String, Any]): Option[ScriptEngine] =
-    Option(scriptEngineManager.getEngineByName(name)).map { x =>
+    _get_engine_by_name(name).map { x =>
       bindings foreach {
         case (k, v) => x.put(k, _value(v))
       }
       x
     }
+
+  private def _get_engine_by_name(name: String): Option[ScriptEngine] =
+    Option(scriptEngineManager.getEngineByName(name))
 
   // See ScriptEnginePart#_eval_bean
   private def _value(p: Any): Any = p match {
@@ -60,5 +65,12 @@ case class ScriptEngineContext(
 }
 
 object ScriptEngineContext {
+  System.setProperty("polyglot.log.handler", "org.goldenport.sexpr.eval.ScriptEngineContext$GraalvmSlf4jLogHandler")
+  System.setProperty("polyglot.engine.WarnInterpreterOnly", "false")
+  System.setProperty("polyglot.log.level", "TRACE") // WARN
+
+  class GraalvmSlf4jLogHandler() extends Slf4jLogHandler("graalvm") {
+  }
+
   def default = ScriptEngineContext()
 }
