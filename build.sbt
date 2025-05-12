@@ -2,7 +2,7 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "2.2.0"
+version := "2.2.1"
 
 scalaVersion := "2.12.18"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")
@@ -13,29 +13,33 @@ scalacOptions += "-deprecation"
 
 scalacOptions += "-unchecked"
 
+javacOptions ++= Seq("--release", "21")
+
 resolvers += "Maven" at "https://repo1.maven.org/maven2"
 
-resolvers += "GitHab releases 2019" at "https://raw.github.com/asami/maven-repository/2019/releases"
+// resolvers += "GitHab releases 2019" at "https://raw.github.com/asami/maven-repository/2019/releases"
 
 resolvers += "GitHab releases 2020" at "https://raw.github.com/asami/maven-repository/2020/releases"
 
-resolvers += "GitHab releases 2021" at "https://raw.github.com/asami/maven-repository/2021/releases"
+// resolvers += "GitHab releases 2021" at "https://raw.github.com/asami/maven-repository/2021/releases"
 
-resolvers += "GitHab releases 2022" at "https://raw.github.com/asami/maven-repository/2022/releases"
+// resolvers += "GitHab releases 2022" at "https://raw.github.com/asami/maven-repository/2022/releases"
 
-resolvers += "GitHab releases 2023" at "https://raw.github.com/asami/maven-repository/2023/releases"
+// resolvers += "GitHab releases 2023" at "https://raw.github.com/asami/maven-repository/2023/releases"
 
-resolvers += "GitHab releases" at "https://raw.github.com/asami/maven-repository/2024/releases"
+// resolvers += "GitHab releases" at "https://raw.github.com/asami/maven-repository/2024/releases"
+
+resolvers += "GitHab releases" at "https://raw.github.com/asami/maven-repository/2025/releases"
 
 resolvers += "GitHub Packages" at "https://maven.pkg.github.com/asami/maven-repository"
 
-resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
+// resolvers += "Asami Maven Repository" at "http://www.asamioffice.com/maven"
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "2.2.1"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "2.2.2"
 
-libraryDependencies += "org.goldenport" %% "goldenport-record" % "2.2.0"
+libraryDependencies += "org.goldenport" %% "goldenport-record" % "2.2.1"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3" % "compile"
 
@@ -55,15 +59,23 @@ libraryDependencies += "org.apache.camel" % "camel-core" % "2.23.1" % "compile"
 
 libraryDependencies += "com.amazonaws" % "aws-java-sdk" % "1.11.519" % "compile"
 
-libraryDependencies += "com.amazonaws" % "aws-java-sdk" % "1.11.519" % "compile"
-
 libraryDependencies += "org.apache.spark" %% "spark-core" % "3.5.5" % "compile" exclude("org.glassfish.hk2", "hk2-utils") exclude("org.glassfish.hk2", "hk2-locator") exclude("javax.validation", "validation-api") exclude("org.slf4j", "slf4j-log4j12") // Use old version for Scala 2.10
 
 libraryDependencies += "org.apache.spark" %% "spark-sql" % "3.5.5" % "compile" exclude("org.glassfish.hk2", "hk2-utils") exclude("org.glassfish.hk2", "hk2-locator") exclude("javax.validation", "validation-api") exclude("org.slf4j", "slf4j-log4j12") // Use old version for Scala 2.10
 
 libraryDependencies += "junit" % "junit" % "4.10" % "test"
 
-libraryDependencies += "org.scalatest" %% "scalatest" % "2.0" % "test"
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.19" % "test"
+
+libraryDependencies ++= Seq(
+  "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
+  "org.scala-lang.modules" %% "scala-parser-combinators" % "2.3.0"
+)
+
+dependencyOverrides ++= Seq(
+  "org.scala-lang.modules" %% "scala-xml" % "2.1.0",
+  "org.scala-lang.modules" %% "scala-parser-combinators" % "2.3.0"
+)
 
 //
 publishTo := Some(
