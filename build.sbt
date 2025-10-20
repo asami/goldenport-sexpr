@@ -2,7 +2,7 @@ organization := "org.goldenport"
 
 name := "goldenport-sexpr"
 
-version := "2.2.1"
+version := "2.2.2"
 
 scalaVersion := "2.12.18"
 // crossScalaVersions := Seq("2.9.2", "2.9.1")
@@ -37,9 +37,9 @@ resolvers += "GitHub Packages" at "https://maven.pkg.github.com/asami/maven-repo
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"
 
-libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "2.2.2"
+libraryDependencies += "org.goldenport" %% "goldenport-scala-lib" % "2.3.14"
 
-libraryDependencies += "org.goldenport" %% "goldenport-record" % "2.2.1"
+libraryDependencies += "org.goldenport" %% "goldenport-record" % "2.2.2"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3" % "compile"
 
