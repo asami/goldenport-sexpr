@@ -71,7 +71,8 @@ import LispContext.ResultWithIncident
  *  version Aug. 31, 2022
  *  version Jul. 17, 2023
  *  version Sep.  8, 2024
- * @version Oct.  8, 2024
+ *  version Oct.  8, 2024
+ * @version Sep. 12, 2025
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -210,6 +211,16 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
     uri: URI,
     p: SExpr,
     charset: Option[Charset] = None
+  ): SExpr = p match {
+    case m: STree => _uri_save_tree(u, uri, m)
+    case m => _uri_save_file(u, uri, m, charset)
+  }
+
+  private def _uri_save_file(
+    u: LispContext,
+    uri: URI,
+    p: SExpr,
+    charset: Option[Charset]
   ): SExpr = {
     val res = p.toBag match {
       case Right(c) =>
@@ -222,6 +233,16 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
     }
     u.traceContext.effect(Effect.Io.Storage.File.create(uri))
     response_result(u, SUrl(uri.toURL), res)
+  }
+
+  private def _uri_save_tree(
+    u: LispContext,
+    uri: URI,
+    p: STree
+  ): SExpr = {
+    val res = u.serviceLogic.treeSave(uri, p.tree)
+    u.traceContext.effect(Effect.Io.Storage.File.create(uri))
+    p
   }
 
   protected final def url_get(u: LispContext, url: URL): LispContext = {

@@ -111,7 +111,9 @@ import org.goldenport.sexpr.script.Script
  *  version Jul. 31, 2023
  *  version Aug.  5, 2023
  *  version Oct. 23, 2024
- * @version Nov.  2, 2024
+ *  version Nov.  2, 2024
+ *  version May. 17, 2025
+ * @version Sep. 11, 2025
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -222,7 +224,7 @@ sealed trait SExpr extends Showable {
    * Show natural description of the data.
    */
   def description: SExpr.Description = description_value
-  def descriptionContent: Seq[String] = SExpr.toFull(getString)
+  def descriptionContent: Seq[String] = SExpr.toFull(show_Content)
   protected lazy val full_description_value = full_description
   protected def full_description = {
     val c = descriptionContent
@@ -451,6 +453,7 @@ case class SString(string: String) extends SExpr {
   override def titleInfo = s"${string.length}"
 
   def replace(from: String, to: String): SString = SString(string.replace(from, to))
+  def toSUri: SUri = SUri(string)
 }
 
 sealed trait SList extends SExpr {
@@ -1293,6 +1296,8 @@ object SLxsv {
 case class STree(tree: Realm) extends SExpr {
   def get(path: String): Option[SExpr] =
     tree.get(path).map(STree.sexpr)
+
+  override protected def show_Content = Some(tree.show)
 }
 object STree {
   def sexpr(p: Realm.Data): SExpr = p match {

@@ -34,7 +34,8 @@ import org.goldenport.util.CurrencyUtils
  *  version May.  8, 2022
  *  version Jul. 24, 2023
  *  version Sep.  7, 2024
- * @version Oct. 20, 2024
+ *  version Oct. 20, 2024
+ * @version Sep. 11, 2025
  * @author  ASAMI, Tomoharu
  */
 case class Script(expressions: Vector[SExpr]) {
@@ -126,7 +127,7 @@ object Script {
     stringTokenizers: Vector[StringLiteralTokenizer] = Vector.empty,
     contextFoundation: ContextFoundation = ContextFoundation.default
   ) extends ParseConfig with ContextFoundation.Holder {
-    def currency: Currency = i18nContext.currency
+    def currency: Currency = i18NContext.currency
     def dateTimeZone: DateTimeZone = dateTimeContext.dateTimeZone
 
     def withContextFoundation(p: ContextFoundation) = copy(contextFoundation = p)

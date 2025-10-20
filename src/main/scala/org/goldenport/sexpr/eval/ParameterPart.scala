@@ -2,6 +2,7 @@ package org.goldenport.sexpr.eval
 
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import scala.util.control.NonFatal
+import java.net.URI
 import java.nio.charset.Charset
 import org.goldenport.RAISE
 import org.goldenport.io.InputSource
@@ -32,8 +33,9 @@ import Parameters.Cursor
  *  version Apr.  9, 2022
  *  version Jul. 31, 2023
  *  version Aug.  1, 2023
-varargs *  version Sep. 30, 2023
-varargs * @version Sep.  8, 2024
+ *  version Sep. 30, 2023
+ *  version Sep.  8, 2024
+ * @version Sep. 13, 2025
  * @author  ASAMI, Tomoharu
  */
 trait ParameterPart { self: LispContext =>
@@ -128,6 +130,8 @@ _.getCharset(key))
       State[Cursor, ValidationNel[SError, String]](_.takeTextInFile(i18nContext, key, charset))
 
     def getTextInFile(key: Symbol, charset: Charset) = State[Cursor, ValidationNel[SError, Option[String]]](_.getTextInFile(key, charset))
+
+    def getUri(key: Symbol) = State[Cursor, ValidationNel[SError, Option[URI]]](_.getUri(key))
 
     // case class Cursor(spec: FunctionSpecification, parameters: Parameters) {
     //   def argument1[A](implicit converter: SExprConverter[A]): (Cursor, ValidationNel[SError, A]) =

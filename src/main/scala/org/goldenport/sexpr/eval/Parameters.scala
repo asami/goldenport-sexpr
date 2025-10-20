@@ -3,6 +3,7 @@ package org.goldenport.sexpr.eval
 import scalaz.{Store => _, Id => _, _}, Scalaz.{Id => _, _}
 import Validation.FlatMap._ 
 import scala.util.control.NonFatal
+import java.net.URI
 import java.nio.charset.Charset
 import org.goldenport.RAISE
 import org.goldenport.context.Consequence
@@ -56,7 +57,8 @@ import org.goldenport.value._
  *  version Jul. 31, 2023
  *  version Aug.  4, 2023
  *  version Sep. 30, 2023
- * @version Sep. 10, 2024
+ *  version Sep. 10, 2024
+ * @version Sep. 13, 2025
  * @author  ASAMI, Tomoharu
  */
 case class Parameters(
@@ -268,7 +270,10 @@ case class Parameters(
         case mm: SUri => (mm, m)
         case mm: SUrl => (mm.asSUri, m)
         case mm: SUrn => (mm.asSUri, m)
-        case mm => RAISE.invalidArgumentFault("No SUri is specified.")
+        case mm => m match {
+          case m2: SString => (m2.toSUri, mm)
+          case m2 => RAISE.invalidArgumentFault("No SUri is specified.")
+        }
       }
     }.getOrElse(
       RAISE.invalidArgumentFault("Two arguments (SUri, SExpr) are required.")
@@ -1004,6 +1009,21 @@ object Parameters {
         case Success(s) => getTextInFile(key, s)
         case Failure(e) => to_error(e)
       }
+
+    def getUri(key: Symbol): (Cursor, ValidationNel[SError, Option[URI]]) = {
+      val nextspec = spec // TODO
+      parameters.getProperty(key) match {
+        case Some(s) => s match {
+          case m: SError => to_error(m)
+          case m: SString => _to_result_option(nextspec, new URI(m.string))
+          case m: SUrl => _to_result_option(nextspec, m.asUri)
+          case m: SUrn => _to_result_option(nextspec, m.asUri)
+          case m: SUri => _to_result_option(nextspec, m.asUri)
+          case m => to_error_illegal_argument(key, m)
+        }
+        case None => to_success(nextspec, None)
+      }
+    }
 
     private def _to_result[T](
       nextspec: FunctionSpecification,
