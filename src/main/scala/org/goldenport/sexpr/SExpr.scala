@@ -113,7 +113,8 @@ import org.goldenport.sexpr.script.Script
  *  version Oct. 23, 2024
  *  version Nov.  2, 2024
  *  version May. 17, 2025
- * @version Sep. 11, 2025
+ *  version Sep. 11, 2025
+ * @version Oct. 21, 2025
  * @author  ASAMI, Tomoharu
  */
 sealed trait SExpr extends Showable {
@@ -1301,7 +1302,7 @@ case class STree(tree: Realm) extends SExpr {
 }
 object STree {
   def sexpr(p: Realm.Data): SExpr = p match {
-    case Realm.StringData(string) => SString(string)
+    case Realm.StringData(string, _) => SString(string)
     case Realm.UrlData(url) => SUrl(url)
     case Realm.BagData(bag) => SBlob(bag.toBlobBag)
     case Realm.ObjectData(o) => SObject(o)
