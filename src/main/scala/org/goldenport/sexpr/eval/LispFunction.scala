@@ -21,7 +21,7 @@ import org.goldenport.record.v3.Table.CreateHtmlStrategy
 import org.goldenport.record.unitofwork._
 import org.goldenport.record.unitofwork.UnitOfWork._
 import org.goldenport.record.http.{Request, Response}
-import org.goldenport.io.{MimeType, UrlUtils, Retry => LibRetry}
+import org.goldenport.io.{MimeType, UrlUtils, UriUtils, Retry => LibRetry}
 import org.goldenport.io.ResourceHandle
 import org.goldenport.matrix.{IMatrix, Matrix}
 import org.goldenport.bag.{EmptyBag, ChunkBag, StringBag}
@@ -72,7 +72,8 @@ import LispContext.ResultWithIncident
  *  version Jul. 17, 2023
  *  version Sep.  8, 2024
  *  version Oct.  8, 2024
- * @version Sep. 12, 2025
+ *  version Sep. 12, 2025
+ * @version Mar. 19, 2026
  * @author  ASAMI, Tomoharu
  */
 trait LispFunction extends PartialFunction[LispContext, LispContext]
@@ -232,8 +233,13 @@ trait LispFunction extends PartialFunction[LispContext, LispContext]
         b
     }
     u.traceContext.effect(Effect.Io.Storage.File.create(uri))
-    response_result(u, SUrl(uri.toURL), res)
+    response_result(u, SUrl(_to_url(uri)), res)
   }
+
+  private def _to_url(uri: URI): URL =
+    UriUtils.getUrl(uri).
+      orElse(UriUtils.getFile(uri).map(_.toURI.toURL)).
+      getOrElse(uri.toURL)
 
   private def _uri_save_tree(
     u: LispContext,

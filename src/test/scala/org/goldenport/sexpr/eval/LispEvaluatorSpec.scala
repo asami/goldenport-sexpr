@@ -1,5 +1,6 @@
 package org.goldenport.sexpr.eval
 
+import java.nio.file.Files
 import org.scalatest.{WordSpec, GivenWhenThen}
 import org.scalatest.Matchers
 import org.scalatest.junit.JUnitRunner
@@ -17,7 +18,8 @@ import org.goldenport.sexpr._
  *  version Oct.  1, 2019
  *  version Feb. 29, 2020
  *  version Jun. 19, 2021
- * @version Sep.  7, 2024
+ *  version Sep.  7, 2024
+ * @version Mar. 19, 2026
  * @author  ASAMI, Tomoharu
  */
 @RunWith(classOf[JUnitRunner])
@@ -73,5 +75,17 @@ class LispEvaluatorSpec extends WordSpec with Matchers with GivenWhenThen {
     //   val r = evaluator.eval("""regex"[a-z]+"""")
     //   r should be(SRegex("""[a-z]+""".r))
     // }
+  }
+  "io" should {
+    "save with relative uri" in {
+      val evaluator = newevaluator
+      val dir = Files.createTempDirectory("sexpr-save-relative")
+      val file = dir.resolve("out.txt").toFile
+      val path = file.getPath
+      val escaped = path.replace("\\", "\\\\")
+      val r = evaluator.eval(s"""(save "$escaped" "hello")""")
+      r should not be a [SError]
+      file.exists() should be(true)
+    }
   }
 }
